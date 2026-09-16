@@ -1,0 +1,287 @@
+:root {
+  /* User-requested Coffee / Warm Earth Palette */
+  --c-darkest: #291C0E;     /* Deep Espresso */
+  --c-deep: #6E473B;        /* Roasted Chestnut / Warm Rust */
+  --c-terracotta: #A78D78;   /* Warm Taupe / Earth Terracotta */
+  --c-sand: #BEB5A9;        /* Neutral Sand / Oat Gray */
+  --c-cream: #E1D4C2;       /* Warm Cream / Light Latte */
+  --c-parchment: #F4E6D2;   /* Soft Warm Parchment / Alabaster Light */
+
+  /* Semantic Theme Mapping */
+  --bg-primary: #150E07;
+  --bg-secondary: #20160C;
+  --bg-tertiary: #291C0E;
+  
+  --bg-card: rgba(41, 28, 14, 0.72);
+  --bg-card-hover: rgba(58, 38, 20, 0.82);
+  --bg-card-elevated: rgba(45, 30, 16, 0.9);
+
+  --border-subtle: rgba(190, 181, 169, 0.14);
+  --border-medium: rgba(225, 212, 194, 0.22);
+  --border-accent: rgba(244, 230, 210, 0.4);
+  --border-glow: rgba(244, 230, 210, 0.6);
+
+  --accent-primary: #6E473B;
+  --accent-secondary: #A78D78;
+  --accent-light: #F4E6D2;
+  --accent-warm: #E1D4C2;
+  --accent-success: #8BA888;
+  --accent-danger: #C85A53;
+
+  --text-primary: #F4E6D2;
+  --text-secondary: #E1D4C2;
+  --text-muted: #BEB5A9;
+  --text-accent: #F4E6D2;
+
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-display: 'Outfit', var(--font-sans);
+  --font-mono: 'JetBrains Mono', monospace;
+
+  --shadow-sm: 0 2px 6px rgba(10, 6, 3, 0.5);
+  --shadow-md: 0 8px 24px -4px rgba(10, 6, 3, 0.7);
+  --shadow-lg: 0 16px 36px -6px rgba(10, 6, 3, 0.85);
+  --shadow-glow: 0 0 24px rgba(167, 141, 120, 0.35);
+
+  --glass-blur: blur(18px);
+  --radius-xs: 5px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --radius-full: 9999px;
+  
+  --ease-spring: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  --ease-smooth: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  min-height: 100vh;
+  overflow-x: hidden;
+  position: relative;
+  background-image: 
+    radial-gradient(circle at 12% 18%, rgba(110, 71, 59, 0.22) 0%, transparent 45%),
+    radial-gradient(circle at 85% 20%, rgba(167, 141, 120, 0.18) 0%, transparent 45%),
+    radial-gradient(circle at 50% 85%, rgba(190, 181, 169, 0.1) 0%, transparent 55%),
+    linear-gradient(180deg, #130D07 0%, #1D140B 50%, #150E07 100%);
+  background-attachment: fixed;
+}
+
+/* Subtle Animated Warm Grid Overlay in Background */
+body::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-image: 
+    linear-gradient(to right, rgba(225, 212, 194, 0.035) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(225, 212, 194, 0.035) 1px, transparent 1px);
+  background-size: 36px 36px;
+  pointer-events: none;
+  z-index: 0;
+  mask-image: radial-gradient(ellipse at center, black 40%, transparent 80%);
+  -webkit-mask-image: radial-gradient(ellipse at center, black 40%, transparent 80%);
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  background: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Glass Panels System */
+.glass-panel {
+  background: var(--bg-card);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  transition: all 0.3s var(--ease-smooth);
+  position: relative;
+  overflow: hidden;
+}
+
+.glass-panel::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(244, 230, 210, 0.25), transparent);
+  pointer-events: none;
+}
+
+.glass-panel:hover {
+  border-color: var(--border-medium);
+  box-shadow: var(--shadow-lg);
+}
+
+.glass-panel-elevated {
+  background: var(--bg-card-elevated);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--border-accent);
+  box-shadow: var(--shadow-glow);
+}
+
+/* Button Variants */
+.glow-btn {
+  background: linear-gradient(135deg, #6E473B 0%, #87584A 50%, #A78D78 100%);
+  background-size: 200% 200%;
+  color: #F4E6D2;
+  font-weight: 700;
+  padding: 8px 18px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(244, 230, 210, 0.45);
+  box-shadow: 0 2px 14px rgba(110, 71, 59, 0.45), inset 0 1px 1px rgba(244, 230, 210, 0.35);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  letter-spacing: 0.02em;
+  transition: all 0.25s var(--ease-smooth);
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.glow-btn::after {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: linear-gradient(60deg, transparent, rgba(244, 230, 210, 0.2), transparent);
+  transform: rotate(30deg);
+  transition: transform 0.6s ease;
+  pointer-events: none;
+}
+
+.glow-btn:hover {
+  transform: translateY(-1.5px);
+  box-shadow: 0 4px 22px rgba(167, 141, 120, 0.55), inset 0 1px 1px rgba(244, 230, 210, 0.6);
+  border-color: #F4E6D2;
+  background-position: 100% 100%;
+}
+
+.glow-btn:hover::after {
+  transform: rotate(30deg) translate(30%, 30%);
+}
+
+.glow-btn:active {
+  transform: translateY(0.5px);
+  box-shadow: 0 2px 8px rgba(110, 71, 59, 0.6);
+}
+
+.glow-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.secondary-btn {
+  background: rgba(190, 181, 169, 0.08);
+  color: var(--c-cream);
+  border: 1px solid var(--border-subtle);
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  transition: all 0.2s var(--ease-smooth);
+  backdrop-filter: blur(8px);
+  cursor: pointer;
+}
+
+.secondary-btn:hover {
+  background: rgba(225, 212, 194, 0.16);
+  color: #fff;
+  border-color: var(--border-medium);
+  transform: translateY(-1px);
+}
+
+.secondary-btn:active {
+  transform: translateY(0);
+}
+
+/* Status Badge with Warm Gold/Sand Border */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 5px 12px;
+  border-radius: var(--radius-full);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  position: relative;
+  background: rgba(167, 141, 120, 0.14);
+  color: #E1D4C2;
+  border: 1px solid rgba(190, 181, 169, 0.35);
+  box-shadow: 0 0 14px rgba(167, 141, 120, 0.18);
+}
+
+.status-badge.live::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #E1D4C2;
+  box-shadow: 0 0 10px #F4E6D2;
+  animation: pulse-dot 1.8s infinite;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(0.8); }
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+/* Custom scrollbars in warm palette */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(21, 14, 7, 0.7);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(167, 141, 120, 0.35);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--c-terracotta);
+  box-shadow: 0 0 10px rgba(167, 141, 120, 0.5);
+}

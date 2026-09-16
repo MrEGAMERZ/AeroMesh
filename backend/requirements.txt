@@ -1,0 +1,37 @@
+# SIH26158 — Single-Pass Drone Video → 3D Model
+# Core dependencies
+
+# Deep Learning & Vision
+torch>=2.2.0
+torchvision>=0.17.0
+transformers>=4.40.0
+timm>=0.9.16
+
+# 3D Processing
+open3d>=0.18.0
+trimesh>=4.0.0
+pygltflib>=1.16.0
+
+# Computer Vision
+opencv-python>=4.9.0
+scikit-image>=0.22.0
+Pillow>=10.0.0
+
+# Geospatial
+pyproj>=3.6.0
+geopy>=2.4.0
+
+# Numerical
+numpy>=1.26.0
+scipy>=1.12.0
+
+# API Server
+fastapi>=0.110.0
+uvicorn[standard]>=0.27.0
+python-multipart>=0.0.9
+
+# Utilities
+tqdm>=4.66.0
+pyyaml>=6.0.1
+laspy>=2.5.0
+plyfile>=1.0.0
