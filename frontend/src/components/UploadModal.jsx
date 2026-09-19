@@ -11,7 +11,6 @@ export default function UploadModal({ isOpen, onClose, onStartProcessing }) {
   const [fps, setFps] = useState('2.0');
   const [masking, setMasking] = useState(true);
 
-  if (!isOpen) return null;
   useEffect(() => {
     if (isOpen) {
       getComputeBackends().then(data => {
@@ -24,6 +23,8 @@ export default function UploadModal({ isOpen, onClose, onStartProcessing }) {
       }).catch(err => console.error("Failed to load compute backends:", err));
     }
   }, [isOpen]);
+
+  if (!isOpen) return null;
 
 
   const handleSubmit = (e) => {
