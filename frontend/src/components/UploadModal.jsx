@@ -8,7 +8,6 @@ export default function UploadModal({ isOpen, onClose, onStartProcessing }) {
   const [computeBackend, setComputeBackend] = useState('');
   const [backendsList, setBackendsList] = useState([]);
   const [engine, setEngine] = useState('demo');
-  const [engine, setEngine] = useState('demo');
   const [fps, setFps] = useState('2.0');
   const [masking, setMasking] = useState(true);
 
@@ -148,7 +147,6 @@ export default function UploadModal({ isOpen, onClose, onStartProcessing }) {
             </div>
           </div>
           
-          <div className="form-row">
           <div className="form-checkbox-row">
             <label className="checkbox-label">
               <input 

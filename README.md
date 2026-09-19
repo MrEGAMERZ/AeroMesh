@@ -3,7 +3,7 @@
 
 [![Status](https://img.shields.io/badge/SIH26158-Production--Ready-00C49F?style=flat-square)]()
 [![Model](https://img.shields.io/badge/Architecture-Feed--Forward%203D%20Transformers-38BDF8?style=flat-square)]()
-[![Engines](https://img.shields.io/badge/Engines-VGGT--%CE%A9%20%7C%20MapAnything%20%7C%20DUSt3R-8B5CF6?style=flat-square)]()
+[![Engines](https://img.shields.io/badge/Engines-VGGSfM%20%7C%20DemoEngine-8B5CF6?style=flat-square)]()
 [![Frontend](https://img.shields.io/badge/Viewer-Three.js%20%2B%20Blender%20Tools%20%2B%20Vite-06B6D4?style=flat-square)]()
 [![Backend](https://img.shields.io/badge/Backend-FastAPI%20%2B%20PyTorch%20%2B%20Open3D-3B82F6?style=flat-square)]()
 
@@ -22,7 +22,7 @@ A state-of-the-art platform for converting **single-pass drone video** and fligh
 
 1. **Shift to Feed-Forward 3D Vision Transformers**:
    - Skips slow traditional Structure-from-Motion (SfM / COLMAP) and non-linear bundle adjustment ($\mathcal{O}(N^2)$).
-   - Directly regresses 3D geometry from video sequences in a single forward pass using **VGGT-Ω**, **MapAnything**, and **DUSt3R**.
+   - Directly regresses 3D geometry from video sequences in a single forward pass using **VGGSfM** (Visual Geometry Grounded SfM) and synthetic fallback via **DemoEngine**.
    - **~80× faster** than traditional photogrammetry (reduces 8.2 minutes to 6.2 seconds for 4K drone footage).
 
 2. **Metric Scale Fusion via SVD Rigid Alignment**:
@@ -113,7 +113,7 @@ python scripts/process_flight.py \
   --video samples/sample_flight.mp4 \
   --telemetry samples/sample_telemetry.csv \
   --output ./output \
-  --model vggt \
+  --model vggsfm \
   --fps 2.0
 ```
 

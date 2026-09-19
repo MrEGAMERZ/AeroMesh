@@ -45,7 +45,7 @@ Traditional aerial photogrammetry (e.g., standard COLMAP, Pix4D, Agisoft Metasha
 
 ### 1.2 The AeroMesh3D Solution
 **AeroMesh3D** revolutionizes aerial 3D reconstruction by bypassing iterative bundle adjustment completely in favor of **feed-forward 3D deep learning transformers** combined with an **in-browser Blender-grade 3D studio**:
-1. **Single-Pass Feed-Forward Inference**: Directly regresses dense metric point maps and camera trajectories in a single forward pass over video frames using foundation models (**MapAnything**, **VGGT-Ω**, and **DUSt3R**).
+1. **Single-Pass Feed-Forward Inference**: Directly regresses dense metric point maps and camera trajectories in a single forward pass over video frames using foundation models (**MapAnything**, **VGGSfM**, and **DUSt3R**).
 2. **Instant Dynamic Masking**: Integrates **Meta SAM 2** to track and mask dynamic objects (vehicles, pedestrians, propeller blades) across video frames prior to geometry generation.
 3. **Sensor-Fusion Metric Georeferencing**: Leverages the drone's built-in GNSS/IMU log (WGS84 lat/lon/altitude) to solve a closed-form **Umeyama Sim(3) Procrustes alignment**, anchoring the reconstructed mesh to real-world metric scale ($1.00\text{ unit} = 1.00\text{ meter}$) without requiring physical GCPs.
 4. **Built-in Blender 3D Studio**: Eliminates the need to export to external software. Users can edit, sculpt, subdivide, decimate, light, simulate physics, inspect GIS metrics, and render studio-grade outputs directly in their browser.
@@ -65,7 +65,7 @@ flowchart TD
     
     subgraph "Inference Options"
         E1[MapAnything - Metric Scale]
-        E2[VGGT-Ω - Dynamic Tolerant]
+        E2[VGGSfM - Dynamic Tolerant]
         E3[DUSt3R - Fast Pairwise]
     end
     E --> E1
@@ -116,7 +116,7 @@ flowchart TD
   - **MapAnything (Meta / CMU, 2025)**:
     - Ingests image tokens along with optional drone camera intrinsics and altitude priors.
     - Directly regresses **metric-scale point maps**, ray maps, and camera poses in a single transformer pass without iterative bundle adjustment.
-  - **VGGT-Ω (Oxford VGG / Meta, CVPR 2026)**:
+  - **VGGSfM (Oxford VGG / Meta, CVPR 2026)**:
     - Global multi-frame cross-attention over 1–100+ frames.
     - Outputs dense 3D point tracks and depth maps with native tolerance to environmental shadows and dynamic lighting.
   - **DUSt3R / MASt3R (Naver Labs)**:
@@ -151,7 +151,7 @@ The frontend (`frontend/src/components/Viewer3D.jsx`) delivers a complete, non-b
 - **Minimal Topbar (38px)**: Consolidates all system navigation into a clean, distraction-free bar:
   - Project branding & GPU status badge (`H200 Active`).
   - Pre-computed flight scenario pills: **Urban 45m**, **Quarry 68m**, **Viaduct 35m**.
-  - Reconstruction model selector (`VGGT-Ω`, `MapAnything`, `DUSt3R`).
+  - Reconstruction model selector (`VGGSfM`, `MapAnything`, `DUSt3R`).
   - Slide-out GIS Telemetry Drawer toggle button.
   - Flight Ingestion modal trigger & 3D OBJ Export button.
 - **Neutral Studio Grey Palette**:

@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { PLYLoader } from "three/addons/loaders/PLYLoader.js";
 
 export default function Viewer3D({ flightData, measurementMode, onAddMeasurementPoint, activePose }) {
   const mountRef = useRef(null);
@@ -115,46 +116,65 @@ export default function Viewer3D({ flightData, measurementMode, onAddMeasurement
   /* ═══════════════ GEOMETRY BUILD ═══════════════ */
   useEffect(() => {
     const sc = sceneRef.current; if (!sc || !flightData) return;
-    if (objRef.current.pcd) sc.remove(objRef.current.pcd);
+    
+    // Cleanup old items
+    if (objRef.current.pcd) { sc.remove(objRef.current.pcd); objRef.current.pcd.geometry.dispose(); }
     if (objRef.current.mesh) sc.remove(objRef.current.mesh);
     if (objRef.current.traj) sc.remove(objRef.current.traj);
     objRef.current.frustums.forEach(f => sc.remove(f)); objRef.current.frustums = [];
 
-    const pts = flightData.points || [];
-    if (pts.length > 0) {
-      const g = new THREE.BufferGeometry(), pos = new Float32Array(pts.length * 3), col = new Float32Array(pts.length * 3);
-      let zMin = Infinity, zMax = -Infinity; pts.forEach(p => { if (p[2] < zMin) zMin = p[2]; if (p[2] > zMax) zMax = p[2]; });
-      pts.forEach((p, i) => {
-        pos[i*3] = p[0]; pos[i*3+1] = p[2]; pos[i*3+2] = p[1];
-        const t = (p[2] - zMin) / (zMax - zMin || 1), c = new THREE.Color();
-        c.setHSL(0.55 - t * 0.48, 0.95, 0.46 + t * 0.22);
-        col[i*3] = c.r; col[i*3+1] = c.g; col[i*3+2] = c.b;
+    // Load PLY if URL is provided
+    if (flightData.ply_url) {
+      const loader = new PLYLoader();
+      loader.load(flightData.ply_url, (geometry) => {
+        geometry.computeVertexNormals();
+        
+        // If geometry has color, PLYLoader sets it automatically
+        let material = new THREE.PointsMaterial({ size: 1.5 });
+        if (geometry.attributes.color) {
+            material.vertexColors = true;
+        } else {
+            material.color = new THREE.Color(0xaaaaaa);
+        }
+        
+        const pc = new THREE.Points(geometry, material);
+        
+        // Rotate so Y is up (often point clouds come with Z up)
+        pc.rotation.x = -Math.PI / 2;
+        
+        sc.add(pc);
+        objRef.current.pcd = pc;
+
+        // Auto-center camera on the point cloud
+        geometry.computeBoundingSphere();
+        const center = geometry.boundingSphere.center;
+        const radius = geometry.boundingSphere.radius;
+        if (cameraRef.current && controlsRef.current) {
+           cameraRef.current.position.set(center.x, center.y + radius, center.z + radius * 1.5);
+           controlsRef.current.target.copy(center);
+        }
       });
-      g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-      g.setAttribute("color", new THREE.BufferAttribute(col, 3));
-      const pc = new THREE.Points(g, new THREE.PointsMaterial({ size: 2.4, vertexColors: true, transparent: true, opacity: 0.88 }));
-      sc.add(pc); objRef.current.pcd = pc;
     }
-    
-    if (flightData.meshVertices && flightData.meshIndices) {
-      const mg = new THREE.BufferGeometry();
-      mg.setAttribute("position", new THREE.BufferAttribute(new Float32Array(flightData.meshVertices), 3));
-      mg.setIndex(flightData.meshIndices); mg.computeVertexNormals();
-      const mm = new THREE.MeshStandardMaterial({ color: 0x94a3b8, side: THREE.DoubleSide });
-      const sm = new THREE.Mesh(mg, mm);
-      sc.add(sm); objRef.current.mesh = sm;
-    }
-    
-    const tr = flightData.trajectory || [];
-    if (tr.length > 1) {
-      const tp = tr.map(p => new THREE.Vector3(p.x, p.z, p.y)), crv = new THREE.CatmullRomCurve3(tp);
-      const tm = new THREE.Mesh(new THREE.TubeGeometry(crv, 72, 0.38, 8, false), new THREE.MeshBasicMaterial({ color: 0xA78D78 }));
-      sc.add(tm); objRef.current.traj = tm;
+
+    // Trajectory Frustums
+    const tr = flightData.camera_poses || [];
+    if (tr.length > 0) {
+      // Basic visualization of the camera poses
       tr.forEach((c, i) => { 
         if (i % 3 === 0) { 
-          const f = new THREE.CameraHelper(new THREE.PerspectiveCamera(40, 1.5, 1, 6)); 
-          f.position.set(c.x, c.z, c.y); 
-          f.lookAt(c.x, 0, c.y + 4); 
+          const f = new THREE.CameraHelper(new THREE.PerspectiveCamera(40, 1.5, 1, 6));
+          // Apply position
+          f.position.set(c.translation[0], c.translation[1], c.translation[2]);
+          // Apply rotation - converting rotation matrix to quaternion
+          const m4 = new THREE.Matrix4();
+          m4.set(
+              c.rotation[0][0], c.rotation[0][1], c.rotation[0][2], 0,
+              c.rotation[1][0], c.rotation[1][1], c.rotation[1][2], 0,
+              c.rotation[2][0], c.rotation[2][1], c.rotation[2][2], 0,
+              0, 0, 0, 1
+          );
+          f.setRotationFromMatrix(m4);
+          
           f.scale.set(0.65, 0.65, 0.65); 
           sc.add(f); 
           objRef.current.frustums.push(f); 
@@ -166,13 +186,7 @@ export default function Viewer3D({ flightData, measurementMode, onAddMeasurement
   /* ═══════════════ SYNC ACTIVE POSE ═══════════════ */
   useEffect(() => {
     if (!activePose || !cameraRef.current || !controlsRef.current) return;
-    
-    const cam = cameraRef.current;
-    
-    // Optionally update camera position to follow active pose
-    // For now we just highlight the active frustum or move camera
-    // This depends on the exact desired behavior. We'll simply let
-    // it be passed as a prop, ready to be used to sync.
+    // Just sync visualization here in the future
   }, [activePose]);
 
   return (
