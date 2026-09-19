@@ -6,6 +6,9 @@ import MeasurementTools from './components/MeasurementTools.jsx';
 import PipelineStatus from './components/PipelineStatus.jsx';
 import SampleSelector from './components/SampleSelector.jsx';
 import UploadModal from './components/UploadModal.jsx';
+import VideoPane from './components/VideoPane.jsx';
+import SyncController from './components/SyncController.jsx';
+import QualityBadge from './components/QualityBadge.jsx';
 import { generateScenarioDataset } from './utils/datasets.js';
 import './App.css';
 
@@ -14,6 +17,9 @@ export default function App() {
   const [activeSampleId, setActiveSampleId] = useState('urban-quadrant');
   const [flightData, setFlightData] = useState(null);
   const [activeWaypointIndex, setActiveWaypointIndex] = useState(0);
+
+  // Sync state
+  const [currentVideoTime, setCurrentVideoTime] = useState(0);
 
   // Measurement State
   const [measurementMode, setMeasurementMode] = useState(false);
@@ -32,6 +38,7 @@ export default function App() {
     setFlightData(data);
     setMeasuredPoints([]);
     setActiveWaypointIndex(0);
+    setCurrentVideoTime(0);
   }, [activeSampleId]);
 
   const handleAddMeasurementPoint = (pt) => {
@@ -111,12 +118,33 @@ export default function App() {
 
       {/* Main Workspace: 3D Viewport + GIS Side Panel */}
       <main className="main-workspace">
-        <div className="viewport-section">
-          <Viewer3D
-            flightData={flightData}
-            measurementMode={measurementMode}
-            onAddMeasurementPoint={handleAddMeasurementPoint}
-          />
+        <div className="viewport-section" style={{ display: 'flex', flexDirection: 'column', position: 'relative' }}>
+          
+          {/* Two-Pane Layout */}
+          <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+            <div style={{ flex: 1, borderRight: '1px solid #222' }}>
+              <VideoPane 
+                videoUrl={flightData?.video_url} 
+                onTimeUpdate={setCurrentVideoTime} 
+              />
+            </div>
+            <div style={{ flex: 1 }}>
+              <SyncController cameraPoses={flightData?.camera_poses} currentVideoTime={currentVideoTime}>
+                {(activePose) => (
+                  <Viewer3D
+                    flightData={flightData}
+                    activePose={activePose}
+                    measurementMode={measurementMode}
+                    onAddMeasurementPoint={handleAddMeasurementPoint}
+                  />
+                )}
+              </SyncController>
+            </div>
+          </div>
+
+          <div style={{ borderTop: '1px solid #222' }}>
+            <QualityBadge report={flightData?.quality_report} />
+          </div>
 
           {/* Processing Overlay if job running */}
           {isProcessing && (
@@ -149,7 +177,11 @@ export default function App() {
               onClearPoints={handleClearMeasurementPoints}
             />
 
-            <PipelineStatus />
+            <PipelineStatus job={{ 
+              status: isProcessing ? 'processing' : 'completed',
+              queue_position: 1, 
+              report: flightData?.quality_report 
+            }} />
           </aside>
         )}
       </main>
