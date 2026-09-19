@@ -4,17 +4,15 @@ import Viewer3D from './components/Viewer3D.jsx';
 import FlightMap from './components/FlightMap.jsx';
 import MeasurementTools from './components/MeasurementTools.jsx';
 import PipelineStatus from './components/PipelineStatus.jsx';
-import SampleSelector from './components/SampleSelector.jsx';
 import UploadModal from './components/UploadModal.jsx';
 import VideoPane from './components/VideoPane.jsx';
 import SyncController from './components/SyncController.jsx';
 import QualityBadge from './components/QualityBadge.jsx';
-import { generateScenarioDataset } from './utils/datasets.js';
+import { createJob, getJobStatus, getArtifactUrl } from './utils/api.js';
 import './App.css';
 
 export default function App() {
-  const [activeModel, setActiveModel] = useState('vggt');
-  const [activeSampleId, setActiveSampleId] = useState('urban-quadrant');
+  const [activeModel, setActiveModel] = useState('demo');
   const [flightData, setFlightData] = useState(null);
   const [activeWaypointIndex, setActiveWaypointIndex] = useState(0);
 
@@ -31,15 +29,8 @@ export default function App() {
   const [processProgress, setProcessProgress] = useState(0);
   const [processStage, setProcessStage] = useState('');
   const [showSidebar, setShowSidebar] = useState(false);
-
-  // Load dataset when sample changes
-  useEffect(() => {
-    const data = generateScenarioDataset(activeSampleId);
-    setFlightData(data);
-    setMeasuredPoints([]);
-    setActiveWaypointIndex(0);
-    setCurrentVideoTime(0);
-  }, [activeSampleId]);
+  const [jobId, setJobId] = useState(null);
+  const [jobInfo, setJobInfo] = useState(null);
 
   const handleAddMeasurementPoint = (pt) => {
     if (measuredPoints.length >= 2) {
@@ -53,52 +44,82 @@ export default function App() {
     setMeasuredPoints([]);
   };
 
-  const handleStartProcessing = ({ videoFile, telemetryFile, engine, fps, masking }) => {
+  const handleStartProcessing = async ({ videoFile, telemetryFile, engine, computeBackend, fps, masking }) => {
     setActiveModel(engine);
     setIsProcessing(true);
-    setProcessProgress(10);
-    setProcessStage(`Ingesting ${videoFile} & filtering blur at ${fps} FPS...`);
-
-    setTimeout(() => {
-      setProcessProgress(35);
-      setProcessStage(masking ? 'SAM 2 dynamic object masking active...' : 'Skipping dynamic masking...');
-    }, 1200);
-
-    setTimeout(() => {
-      setProcessProgress(70);
-      setProcessStage(`Feed-forward transformer inference (${engine.toUpperCase()})...`);
-    }, 2500);
-
-    setTimeout(() => {
-      setProcessProgress(90);
-      setProcessStage('Georeferencing & Poisson surface meshing...');
-    }, 3800);
-
-    setTimeout(() => {
-      setProcessProgress(100);
-      setProcessStage('Reconstruction Complete!');
-      // Switch to fresh sample dataset
-      setActiveSampleId(activeSampleId === 'urban-quadrant' ? 'rural-quarry' : 'urban-quadrant');
-      setTimeout(() => {
-        setIsProcessing(false);
-      }, 800);
-    }, 4800);
+    setProcessProgress(0);
+    setProcessStage('Uploading files to backend...');
+    
+    try {
+      const result = await createJob(videoFile, telemetryFile, engine, computeBackend, fps, masking);
+      setJobId(result.job_id);
+    } catch (err) {
+      alert("Error creating job: " + err.message);
+      setIsProcessing(false);
+    }
   };
 
+  // Polling for job status
+  useEffect(() => {
+    let interval;
+    if (jobId && isProcessing) {
+      interval = setInterval(async () => {
+        try {
+          const statusResult = await getJobStatus(jobId);
+          setJobInfo(statusResult);
+          
+          if (statusResult.status === 'processing' || statusResult.status === 'queued') {
+            setProcessProgress(statusResult.progress || 0);
+            setProcessStage(statusResult.current_stage || `Status: ${statusResult.status}`);
+          } else if (statusResult.status === 'completed') {
+            setIsProcessing(false);
+            
+            // Reconstruct FlightData structure for the components
+            const summary = statusResult.summary || {};
+            
+            // We need to fetch the camera_trajectory.json to populate flightData.camera_poses and flightData.trajectory
+            try {
+               const trajRes = await fetch(getArtifactUrl(jobId, "camera_trajectory.json"));
+               let poses = [];
+               if (trajRes.ok) {
+                 const trajData = await trajRes.json();
+                 poses = trajData.cameras || [];
+               }
+               
+               // Load up the data
+               setFlightData({
+                  ply_url: getArtifactUrl(jobId, "reconstructed_pointcloud.ply"),
+                  camera_poses: poses,
+                  trajectory: [], // Ideally we'd map points here, but keeping minimal for now
+                  quality_report: {
+                    status: 'success',
+                    point_count: summary.point_count,
+                    flight_duration: summary.flight_duration_s,
+                    mean_altitude: summary.mean_altitude_m
+                  }
+               });
+               
+            } catch (fetchErr) {
+               console.error("Failed to fetch camera trajectory:", fetchErr);
+            }
+          } else if (statusResult.status === 'failed') {
+            setIsProcessing(false);
+            alert("Job failed: " + statusResult.error);
+          }
+        } catch (err) {
+          console.error("Polling error", err);
+        }
+      }, 2000);
+    }
+    return () => clearInterval(interval);
+  }, [jobId, isProcessing]);
+
   const handleExport = () => {
-    // Generate downloadable OBJ
-    if (!flightData) return;
-    const lines = ["# SIH26158 Georeferenced Drone Reconstruction OBJ"];
-    flightData.points.slice(0, 1000).forEach((p) => {
-      lines.push(`v ${p[0].toFixed(4)} ${p[2].toFixed(4)} ${p[1].toFixed(4)}`);
-    });
-    const blob = new Blob([lines.join('\n')], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `AeroMesh3D_${activeSampleId}_model.obj`;
-    a.click();
-    URL.revokeObjectURL(url);
+    if (!jobId) {
+      alert("No active job to export");
+      return;
+    }
+    window.open(getArtifactUrl(jobId, "reconstructed_pointcloud.ply"), "_blank");
   };
 
   return (
@@ -110,8 +131,6 @@ export default function App() {
         onOpenUpload={() => setIsUploadOpen(true)}
         onExport={handleExport}
         isProcessing={isProcessing}
-        activeSampleId={activeSampleId}
-        onSelectSample={setActiveSampleId}
         showSidebar={showSidebar}
         onToggleSidebar={() => setShowSidebar((s) => !s)}
       />
@@ -124,7 +143,7 @@ export default function App() {
           <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
             <div style={{ flex: 1, borderRight: '1px solid #222' }}>
               <VideoPane 
-                videoUrl={flightData?.video_url} 
+                videoUrl={null} // We aren't serving the actual video file right now, but we could!
                 onTimeUpdate={setCurrentVideoTime} 
               />
             </div>
@@ -153,7 +172,20 @@ export default function App() {
               <div className="processing-info">
                 <div className="processing-title">Processing Single-Pass Flight Pass</div>
                 <div className="processing-stage font-mono">{processStage}</div>
-                <div className="progress-bar-track">
+                {jobInfo && (
+                    <div className="processing-summary-grid font-mono" style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginTop: '12px', fontSize: '0.85rem', color: '#a1a1aa'}}>
+                      <div>Compute: <span style={{color: '#fff'}}>{jobInfo.compute_device_name || "Unknown"}</span></div>
+                      <div>Engine: <span style={{color: '#fff'}}>{jobInfo.model?.toUpperCase()}</span></div>
+                      <div>VRAM: <span style={{color: '#fff'}}>{jobInfo.vram_used_gb || 0} / {jobInfo.vram_total_gb || 0} GB</span></div>
+                      <div>Status: <span style={{color: '#fff', textTransform: 'capitalize'}}>{jobInfo.status}</span></div>
+                    </div>
+                )}
+                {jobInfo?.status === "queued" && (
+                    <div style={{color: '#ffc107', fontSize: '0.85rem', marginTop: '12px'}}>
+                        Queue Position: {jobInfo.queue_position}
+                    </div>
+                )}
+                <div className="progress-bar-track" style={{marginTop: '12px'}}>
                   <div className="progress-bar-fill" style={{ width: `${processProgress}%` }} />
                 </div>
               </div>
@@ -177,11 +209,7 @@ export default function App() {
               onClearPoints={handleClearMeasurementPoints}
             />
 
-            <PipelineStatus job={{ 
-              status: isProcessing ? 'processing' : 'completed',
-              queue_position: 1, 
-              report: flightData?.quality_report 
-            }} />
+            <PipelineStatus job={jobInfo} />
           </aside>
         )}
       </main>

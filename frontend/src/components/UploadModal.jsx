@@ -1,21 +1,43 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { getComputeBackends } from '../utils/api.js';
 import { X, UploadCloud, FileVideo, FileSpreadsheet, Play, Sparkles, CheckCircle2 } from 'lucide-react';
 
 export default function UploadModal({ isOpen, onClose, onStartProcessing }) {
   const [videoFile, setVideoFile] = useState(null);
   const [telemetryFile, setTelemetryFile] = useState(null);
-  const [engine, setEngine] = useState('vggt');
+  const [computeBackend, setComputeBackend] = useState('');
+  const [backendsList, setBackendsList] = useState([]);
+  const [engine, setEngine] = useState('demo');
+  const [engine, setEngine] = useState('demo');
   const [fps, setFps] = useState('2.0');
   const [masking, setMasking] = useState(true);
 
   if (!isOpen) return null;
+  useEffect(() => {
+    if (isOpen) {
+      getComputeBackends().then(data => {
+        setBackendsList(data.compute_backends || []);
+        const avail = data.compute_backends.find(b => b.status === "available");
+        if (avail) {
+            setComputeBackend(avail.id);
+            setEngine(avail.engines[0]);
+        }
+      }).catch(err => console.error("Failed to load compute backends:", err));
+    }
+  }, [isOpen]);
+
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    if (!videoFile || !telemetryFile) {
+        alert("Please provide both a Video and Telemetry file.");
+        return;
+    }
     onStartProcessing({
-      videoFile: videoFile ? videoFile.name : 'DJI_0042_SinglePass.mp4',
-      telemetryFile: telemetryFile ? telemetryFile.name : 'flight_telemetry.csv',
+      videoFile,
+      telemetryFile,
       engine,
+      computeBackend,
       fps: parseFloat(fps),
       masking
     });
@@ -98,24 +120,35 @@ export default function UploadModal({ isOpen, onClose, onStartProcessing }) {
           {/* Pipeline Configuration Parameters */}
           <div className="form-row">
             <div className="form-group">
-              <label className="input-label">Transformer Engine</label>
-              <select value={engine} onChange={(e) => setEngine(e.target.value)} className="form-select">
-                <option value="vggt">VGGT-Ω (Oxford/Meta) — Single Pass</option>
-                <option value="mapanything">MapAnything (Meta/CMU) — Metric-Scale</option>
-                <option value="dust3r">DUSt3R / MASt3R — Pairwise Fallback</option>
+              <label className="input-label">Compute Backend (WHERE)</label>
+              <select 
+                value={computeBackend} 
+                onChange={(e) => {
+                  setComputeBackend(e.target.value);
+                  const b = backendsList.find(x => x.id === e.target.value);
+                  if (b && !b.engines.includes(engine)) setEngine(b.engines[0]);
+                }} 
+                className="form-select"
+              >
+                {backendsList.map(b => (
+                  <option key={b.id} value={b.id} disabled={b.status !== "available"}>
+                    {b.name} [{b.device}] {b.status !== "available" ? "(Unavailable)" : ""}
+                  </option>
+                ))}
               </select>
             </div>
-
+            
             <div className="form-group">
-              <label className="input-label">Frame Sampling Rate</label>
-              <select value={fps} onChange={(e) => setFps(e.target.value)} className="form-select">
-                <option value="1.0">1.0 FPS (Fast / Sparse)</option>
-                <option value="2.0">2.0 FPS (Standard Balanced)</option>
-                <option value="4.0">4.0 FPS (Dense / High-overlap)</option>
+              <label className="input-label">Reconstruction Engine (HOW)</label>
+              <select value={engine} onChange={(e) => setEngine(e.target.value)} className="form-select">
+                {(backendsList.find(b => b.id === computeBackend)?.engines || []).map(e => (
+                   <option key={e} value={e}>{e.toUpperCase()}</option>
+                ))}
               </select>
             </div>
           </div>
-
+          
+          <div className="form-row">
           <div className="form-checkbox-row">
             <label className="checkbox-label">
               <input 

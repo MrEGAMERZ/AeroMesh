@@ -59,7 +59,66 @@ def read_root():
         "api_docs": "/docs"
     }
 
+
+@app.get("/api/compute")
+def get_compute_capabilities():
+    """Discover available compute nodes and their supported engines."""
+    nodes = []
+    
+    # 1. Local Node (dynamic detection)
+    try:
+        import torch
+        gpu_available = torch.cuda.is_available()
+        gpu_name = torch.cuda.get_device_name(0) if gpu_available else None
+        gpu_memory = round(torch.cuda.get_device_properties(0).total_memory / (1024**3), 1) if gpu_available else 0
+    except ImportError:
+        gpu_available = False
+        gpu_name = None
+        gpu_memory = 0
+        
+    if gpu_available:
+        nodes.append({
+            "id": "local_gpu",
+            "name": "Local GPU",
+            "device": gpu_name,
+            "vram_gb": gpu_memory,
+            "status": "available",
+            "engines": ["vggsfm", "colmap", "demo"]
+        })
+    else:
+        nodes.append({
+            "id": "local_cpu",
+            "name": "Local CPU",
+            "device": "System CPU",
+            "vram_gb": 0,
+            "status": "available",
+            "engines": ["colmap", "demo"]
+        })
+        
+    # 2. Remote / University Cluster (mocked)
+    nodes.append({
+        "id": "university_cluster",
+        "name": "University Cluster",
+        "device": "NVIDIA H200 PCIe",
+        "vram_gb": 141.0,
+        "status": "unavailable",
+        "engines": ["vggsfm", "vggt", "colmap", "demo"]
+    })
+    
+    # 3. Cloud GPU (mocked)
+    nodes.append({
+        "id": "cloud_gpu",
+        "name": "Cloud Deployment",
+        "device": "AWS g6.xlarge (L4)",
+        "vram_gb": 24.0,
+        "status": "unavailable",
+        "engines": ["vggsfm", "vggt", "mapanything", "colmap"]
+    })
+    
+    return {"compute_backends": nodes}
+
 @app.get("/api/status")
+
 def system_status():
     try:
         import torch
@@ -138,6 +197,7 @@ async def create_pipeline_job(
     video: UploadFile = File(...),
     telemetry: UploadFile = File(...),
     model: str = Form("demo"),
+    compute_backend: str = Form("local_gpu"),
     target_fps: float = Form(2.0),
     enable_masking: bool = Form(True)
 ):
@@ -169,10 +229,17 @@ async def create_pipeline_job(
         "video_file": video.filename,
         "telemetry_file": telemetry.filename,
         "model": model,
+        "compute_backend": compute_backend,
         "created_at": str(asyncio.get_event_loop().time()),
         "summary": None,
-        "queue_position": 0
+        "queue_position": 0,
+        "compute_device_name": "Unknown",
+        "vram_used_gb": 0.0,
+        "vram_total_gb": 0.0
     }
+    
+    if compute_backend not in ["local_gpu", "local_cpu"]:
+        raise HTTPException(status_code=400, detail="Requested compute backend is currently unavailable.")
 
     # Run processing asynchronously
     background_tasks.add_task(
@@ -182,6 +249,7 @@ async def create_pipeline_job(
         telemetry_path=str(telemetry_path),
         job_dir=str(job_dir),
         model=model,
+        compute_backend=compute_backend,
         target_fps=target_fps,
         enable_masking=enable_masking
     )
@@ -195,6 +263,7 @@ async def execute_job_pipeline(
     telemetry_path: str,
     job_dir: str,
     model: str,
+    compute_backend: str,
     target_fps: float,
     enable_masking: bool
 ):
@@ -221,6 +290,17 @@ async def execute_job_pipeline(
             JOBS[job_id]["progress"] = 70
             JOBS[job_id]["current_stage"] = f"Feed-forward 3D transformer forward pass ({model.upper()})..."
 
+            # Fetch hardware stats for UI
+            try:
+                import torch
+                if torch.cuda.is_available():
+                    JOBS[job_id]["compute_device_name"] = torch.cuda.get_device_name(0)
+                    JOBS[job_id]["vram_total_gb"] = round(torch.cuda.get_device_properties(0).total_memory / (1024**3), 1)
+                else:
+                    JOBS[job_id]["compute_device_name"] = "System CPU"
+            except ImportError:
+                JOBS[job_id]["compute_device_name"] = "System CPU"
+                
             # Run pipeline
             summary = run_pipeline(
                 video_path=video_path,
@@ -231,6 +311,12 @@ async def execute_job_pipeline(
                 enable_masking=enable_masking
             )
 
+            try:
+                import torch
+                if torch.cuda.is_available():
+                    JOBS[job_id]["vram_used_gb"] = round(torch.cuda.memory_allocated(0) / (1024**3), 2)
+            except ImportError:
+                pass
             JOBS[job_id]["progress"] = 90
             JOBS[job_id]["current_stage"] = "Poisson surface meshing & georeferencing..."
             await asyncio.sleep(0.2)
