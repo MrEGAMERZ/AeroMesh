@@ -58,6 +58,54 @@ class FlightTrajectory:
             "min_alt": min(alts), "max_alt": max(alts),
         }
 
+    def interpolate(self, timestamp_ms: float) -> "TelemetryPoint":
+        """Return a TelemetryPoint linearly interpolated at timestamp_ms.
+
+        If timestamp_ms is before the first point or after the last, returns the
+        nearest endpoint (clamped). All float fields (lat, lon, alt, yaw, pitch,
+        roll, speed) are linearly interpolated; None fields remain None.
+        """
+        if not self.points:
+            raise ValueError("Cannot interpolate: FlightTrajectory has no points.")
+        if len(self.points) == 1:
+            return self.points[0]
+
+        # Clamp to range
+        if timestamp_ms <= self.points[0].timestamp_ms:
+            return self.points[0]
+        if timestamp_ms >= self.points[-1].timestamp_ms:
+            return self.points[-1]
+
+        # Binary search for surrounding pair
+        lo, hi = 0, len(self.points) - 1
+        while lo + 1 < hi:
+            mid = (lo + hi) // 2
+            if self.points[mid].timestamp_ms <= timestamp_ms:
+                lo = mid
+            else:
+                hi = mid
+
+        p0, p1 = self.points[lo], self.points[hi]
+        span = p1.timestamp_ms - p0.timestamp_ms
+        t = (timestamp_ms - p0.timestamp_ms) / span if span > 0 else 0.0
+
+        def _lerp(a, b):
+            if a is None or b is None:
+                return a  # can't interpolate None fields
+            return a + t * (b - a)
+
+        return TelemetryPoint(
+            timestamp_ms=timestamp_ms,
+            latitude=_lerp(p0.latitude, p1.latitude),
+            longitude=_lerp(p0.longitude, p1.longitude),
+            altitude_m=_lerp(p0.altitude_m, p1.altitude_m),
+            yaw_deg=_lerp(p0.yaw_deg, p1.yaw_deg),
+            pitch_deg=_lerp(p0.pitch_deg, p1.pitch_deg),
+            roll_deg=_lerp(p0.roll_deg, p1.roll_deg),
+            speed_mps=_lerp(p0.speed_mps, p1.speed_mps),
+        )
+
+
 
 class TelemetryParser:
     """
@@ -178,44 +226,68 @@ class TelemetryParser:
         return FlightTrajectory(points=points, source_file=filepath, source_format="json")
 
     def _parse_dji_srt(self, filepath: str) -> FlightTrajectory:
-        """Parse DJI subtitle (.srt) files with embedded GPS data."""
+        """Parse DJI subtitle (.srt) files with embedded GPS data.
+
+        Supports both the legacy single-line format:
+            [latitude: X] [longitude: Y] [altitude: Z]
+        and the new DJI format with any field ordering. Fields are matched
+        independently so ordering in the SRT subtitle block does not matter.
+        """
         with open(filepath, "r") as f:
             content = f.read()
 
-        # DJI SRT GPS pattern: [latitude: X] [longitude: Y] [altitude: Z]
-        gps_pattern = re.compile(
-            r'\[latitude:\s*([-\d.]+)\]\s*\[longitude:\s*([-\d.]+)\]\s*\[altitude:\s*([-\d.]+)\]',
+        # Match each field independently — order-insensitive
+        # Handles formats like:
+        #   [latitude: 28.612] [longitude: 77.209] [altitude: 45.2m]
+        #   [altitude: 45.2m] [latitude: 28.612] [longitude: 77.209]
+        #   [abs_alt: 45.2] [rel_alt: 12.4] [latitude: 28.612] [longitude: 77.209]
+        _field = lambda key: re.compile(
+            r'\[' + key + r':\s*([-\d.]+)\s*m?\]',
             re.IGNORECASE,
         )
+        lat_pattern   = _field(r'latitude')
+        lon_pattern   = _field(r'longitude')
+        alt_pattern   = _field(r'(?:altitude|abs_alt|rel_alt)')
+        yaw_pattern   = _field(r'yaw')
+        pitch_pattern = _field(r'pitch')
+        roll_pattern  = _field(r'roll')
 
         # Timestamp pattern: HH:MM:SS,mmm --> HH:MM:SS,mmm
-        time_pattern = re.compile(
-            r'(\d{2}):(\d{2}):(\d{2}),(\d{3})\s*-->'
-        )
+        time_pattern = re.compile(r'(\d{2}):(\d{2}):(\d{2}),(\d{3})\s*-->')
 
         points = []
         blocks = content.split("\n\n")
 
         for block in blocks:
+            lat_m   = lat_pattern.search(block)
+            lon_m   = lon_pattern.search(block)
+            alt_m   = alt_pattern.search(block)
+
+            # Need at minimum lat + lon to form a usable point
+            if not (lat_m and lon_m):
+                continue
+
+            lat = float(lat_m.group(1))
+            lon = float(lon_m.group(1))
+            alt = float(alt_m.group(1)) if alt_m else 0.0
+
+            yaw   = float(yaw_pattern.search(block).group(1))   if yaw_pattern.search(block)   else None
+            pitch = float(pitch_pattern.search(block).group(1)) if pitch_pattern.search(block) else None
+            roll  = float(roll_pattern.search(block).group(1))  if roll_pattern.search(block)  else None
+
+            ts = 0.0
             time_match = time_pattern.search(block)
-            gps_match = gps_pattern.search(block)
+            if time_match:
+                h, m, s, ms = (int(time_match.group(i)) for i in range(1, 5))
+                ts = (h * 3600 + m * 60 + s) * 1000.0 + ms
 
-            if gps_match:
-                lat = float(gps_match.group(1))
-                lon = float(gps_match.group(2))
-                alt = float(gps_match.group(3))
-
-                ts = 0.0
-                if time_match:
-                    h, m, s, ms = int(time_match.group(1)), int(time_match.group(2)), \
-                                  int(time_match.group(3)), int(time_match.group(4))
-                    ts = (h * 3600 + m * 60 + s) * 1000.0 + ms
-
-                points.append(TelemetryPoint(
-                    timestamp_ms=ts, latitude=lat, longitude=lon, altitude_m=alt,
-                ))
+            points.append(TelemetryPoint(
+                timestamp_ms=ts, latitude=lat, longitude=lon, altitude_m=alt,
+                yaw_deg=yaw, pitch_deg=pitch, roll_deg=roll,
+            ))
 
         return FlightTrajectory(points=points, source_file=filepath, source_format="dji_srt")
+
 
 
 class TrajectoryAligner:
