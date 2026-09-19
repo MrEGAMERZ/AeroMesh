@@ -3,7 +3,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { PLYLoader } from "three/addons/loaders/PLYLoader.js";
 
-export default function Viewer3D({ flightData, measurementMode, onAddMeasurementPoint, activePose }) {
+export default function Viewer3D({ flightData, measurementMode, measuredPoints = [], onAddMeasurementPoint, activePose }) {
   const mountRef = useRef(null);
   const sceneRef = useRef(null);
   const cameraRef = useRef(null);
@@ -15,6 +15,8 @@ export default function Viewer3D({ flightData, measurementMode, onAddMeasurement
     mesh: null,
     traj: null,
     frustums: [],
+    measureLine: null,
+    measurePoints: [],
   });
 
   /* ═══════════════ THREE.JS SCENE SETUP ═══════════════ */
@@ -79,7 +81,7 @@ export default function Viewer3D({ flightData, measurementMode, onAddMeasurement
       if (intersects.length > 0) {
         const pt = intersects[0].point;
         if (measurementMode && onAddMeasurementPoint) {
-          onAddMeasurementPoint([pt.x, pt.y, pt.z]);
+          onAddMeasurementPoint({x: pt.x, y: pt.y, z: pt.z});
         }
       }
     };
@@ -182,6 +184,44 @@ export default function Viewer3D({ flightData, measurementMode, onAddMeasurement
       });
     }
   }, [flightData]);
+
+  
+  /* ═══════════════ MEASUREMENT LINE SYNC ═══════════════ */
+  useEffect(() => {
+    const sc = sceneRef.current;
+    if (!sc) return;
+    
+    // Clear old measurement viz
+    if (objRef.current.measureLine) sc.remove(objRef.current.measureLine);
+    objRef.current.measurePoints.forEach(p => sc.remove(p));
+    objRef.current.measurePoints = [];
+    
+    if (measuredPoints.length > 0) {
+      // Draw points
+      measuredPoints.forEach((pt, i) => {
+        const dotGeo = new THREE.SphereGeometry(1.5, 16, 16);
+        const dotMat = new THREE.MeshBasicMaterial({ color: i === 0 ? 0x00ff00 : 0xff0000 });
+        const dot = new THREE.Mesh(dotGeo, dotMat);
+        dot.position.set(pt.x, pt.y, pt.z);
+        sc.add(dot);
+        objRef.current.measurePoints.push(dot);
+      });
+      
+      // Draw line
+      if (measuredPoints.length === 2) {
+        const p1 = measuredPoints[0];
+        const p2 = measuredPoints[1];
+        const points = [];
+        points.push(new THREE.Vector3(p1.x, p1.y, p1.z));
+        points.push(new THREE.Vector3(p2.x, p2.y, p2.z));
+        const lineGeo = new THREE.BufferGeometry().setFromPoints(points);
+        const lineMat = new THREE.LineBasicMaterial({ color: 0x00ffff, linewidth: 3 });
+        const line = new THREE.Line(lineGeo, lineMat);
+        sc.add(line);
+        objRef.current.measureLine = line;
+      }
+    }
+  }, [measuredPoints]);
 
   /* ═══════════════ SYNC ACTIVE POSE ═══════════════ */
   useEffect(() => {

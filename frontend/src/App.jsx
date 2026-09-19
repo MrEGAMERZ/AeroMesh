@@ -8,6 +8,7 @@ import UploadModal from './components/UploadModal.jsx';
 import VideoPane from './components/VideoPane.jsx';
 import SyncController from './components/SyncController.jsx';
 import QualityBadge from './components/QualityBadge.jsx';
+import ExportToolkit from './components/ExportToolkit.jsx';
 import { createJob, getJobStatus, getArtifactUrl } from './utils/api.js';
 import './App.css';
 
@@ -156,6 +157,7 @@ export default function App() {
                     flightData={flightData}
                     activePose={activePose}
                     measurementMode={measurementMode}
+                    measuredPoints={measuredPoints}
                     onAddMeasurementPoint={handleAddMeasurementPoint}
                   />
                 )}
@@ -210,6 +212,10 @@ export default function App() {
               points={measuredPoints}
               onClearPoints={handleClearMeasurementPoints}
             />
+
+            {jobInfo?.status === 'completed' && (
+              <ExportToolkit jobId={jobInfo.id} />
+            )}
 
             <PipelineStatus job={jobInfo} />
           </aside>
