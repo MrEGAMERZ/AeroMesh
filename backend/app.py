@@ -195,7 +195,7 @@ def get_sample_datasets():
 async def create_pipeline_job(
     background_tasks: BackgroundTasks,
     video: UploadFile = File(...),
-    telemetry: UploadFile = File(...),
+    telemetry: Optional[UploadFile] = File(None),
     model: str = Form("demo"),
     compute_backend: str = Form("local_gpu"),
     target_fps: float = Form(2.0),
@@ -214,12 +214,16 @@ async def create_pipeline_job(
 
     # Save uploaded files
     video_path = job_dir / video.filename
-    telemetry_path = job_dir / telemetry.filename
-
     with open(video_path, "wb") as f:
         shutil.copyfileobj(video.file, f)
-    with open(telemetry_path, "wb") as f:
-        shutil.copyfileobj(telemetry.file, f)
+        
+    telemetry_path = None
+    telemetry_filename = None
+    if telemetry is not None and telemetry.filename:
+        telemetry_path = job_dir / telemetry.filename
+        telemetry_filename = telemetry.filename
+        with open(telemetry_path, "wb") as f:
+            shutil.copyfileobj(telemetry.file, f)
 
     JOBS[job_id] = {
         "id": job_id,
@@ -227,7 +231,7 @@ async def create_pipeline_job(
         "progress": 5,
         "current_stage": "Initializing job environment",
         "video_file": video.filename,
-        "telemetry_file": telemetry.filename,
+        "telemetry_file": telemetry_filename,
         "model": model,
         "compute_backend": compute_backend,
         "created_at": str(asyncio.get_event_loop().time()),
@@ -246,7 +250,7 @@ async def create_pipeline_job(
         execute_job_pipeline,
         job_id=job_id,
         video_path=str(video_path),
-        telemetry_path=str(telemetry_path),
+        telemetry_path=str(telemetry_path) if telemetry_path else None,
         job_dir=str(job_dir),
         model=model,
         compute_backend=compute_backend,
@@ -260,7 +264,7 @@ async def create_pipeline_job(
 async def execute_job_pipeline(
     job_id: str,
     video_path: str,
-    telemetry_path: str,
+    telemetry_path: Optional[str],
     job_dir: str,
     model: str,
     compute_backend: str,

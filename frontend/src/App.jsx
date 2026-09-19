@@ -94,6 +94,8 @@ export default function App() {
                   quality_report: {
                     status: 'success',
                     point_count: summary.point_count,
+                    elapsed_seconds: summary.elapsed_seconds,
+                    telemetry_available: summary.flight_duration_s != null,
                     flight_duration: summary.flight_duration_s,
                     mean_altitude: summary.mean_altitude_m
                   }

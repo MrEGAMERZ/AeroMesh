@@ -9,7 +9,9 @@ export async function getComputeBackends() {
 export async function createJob(videoFile, telemetryFile, model, computeBackend, targetFps, enableMasking) {
   const formData = new FormData();
   formData.append('video', videoFile);
-  formData.append('telemetry', telemetryFile);
+  if (telemetryFile) {
+    formData.append('telemetry', telemetryFile);
+  }
   formData.append('model', model);
   formData.append('compute_backend', computeBackend);
   formData.append('target_fps', targetFps);

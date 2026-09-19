@@ -28,8 +28,8 @@ export default function UploadModal({ isOpen, onClose, onStartProcessing }) {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!videoFile || !telemetryFile) {
-        alert("Please provide both a Video and Telemetry file.");
+    if (!videoFile) {
+        alert("Please provide a Video file.");
         return;
     }
     onStartProcessing({
