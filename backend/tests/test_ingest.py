@@ -13,16 +13,32 @@ except ImportError:
 from pipeline.ingest import VideoIngestor, IngestConfig, FrameMetadata
 
 def test_blur_score_computation():
-    if isinstance(cv2, MagicMock):
-        pytest.skip("cv2 is mocked")
+    # Skip if cv2 is mocked (no real OpenCV installed)
+    try:
+        import cv2 as _cv2_real
+        if not hasattr(_cv2_real, 'GaussianBlur'):
+            pytest.skip("cv2 is mocked")
+    except ImportError:
+        pytest.skip("cv2 not installed")
+
     ingestor = VideoIngestor(IngestConfig())
-    sharp = np.zeros((100, 100), dtype=np.uint8)
-    sharp[0:50, 0:50] = 255
-    sharp[50:100, 50:100] = 255
-    blurry = cv2.GaussianBlur(sharp, (15, 15), 0)
-    score_sharp = ingestor.compute_blur_score(sharp)
-    score_blurry = ingestor.compute_blur_score(blurry)
-    assert score_sharp > score_blurry
+
+    # compute_blur_score calls cv2.cvtColor(frame, COLOR_BGR2GRAY)
+    # so input must be a 3-channel BGR image, not grayscale
+    sharp_bgr = np.zeros((100, 100, 3), dtype=np.uint8)
+    sharp_bgr[0:50, 0:50] = 255   # high-contrast checkerboard in BGR
+    sharp_bgr[50:100, 50:100] = 255
+
+    # Apply heavy Gaussian blur to create a blurry version
+    blurry_bgr = cv2.GaussianBlur(sharp_bgr, (21, 21), 0)
+
+    score_sharp = ingestor.compute_blur_score(sharp_bgr)
+    score_blurry = ingestor.compute_blur_score(blurry_bgr)
+
+    assert score_sharp > score_blurry, (
+        f"Expected sharp score ({score_sharp:.1f}) > blurry score ({score_blurry:.1f})"
+    )
+
 
 @patch.object(VideoIngestor, 'compute_blur_score', return_value=100.0)
 @patch.object(VideoIngestor, 'compute_frame_difference', return_value=1.0)
