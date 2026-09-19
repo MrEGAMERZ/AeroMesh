@@ -19,8 +19,55 @@ sys.path.insert(0, str(Path(__file__).parent.parent.resolve()))
 from pipeline.ingest import VideoIngestor, IngestConfig
 from pipeline.telemetry import TelemetryParser, TrajectoryAligner
 from pipeline.dynamic_masking import DynamicObjectMasker, MaskingConfig
-from pipeline.reconstruction import ReconstructionEngine, ReconstructionConfig
+from pipeline.engines import get_engine
 from pipeline.meshing import MeshGenerator, MeshingConfig
+
+def save_point_cloud_ply(result, output_path: str):
+    """Save point cloud to PLY format."""
+    pc = result.point_cloud
+    n = len(pc.points)
+
+    header = (
+        "ply\n"
+        "format ascii 1.0\n"
+        f"element vertex {n}\n"
+        "property float x\n"
+        "property float y\n"
+        "property float z\n"
+        "property uchar red\n"
+        "property uchar green\n"
+        "property uchar blue\n"
+        "end_header\n"
+    )
+
+    os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
+    with open(output_path, "w") as f:
+        f.write(header)
+        for i in range(n):
+            x, y, z = pc.points[i]
+            r, g, b = pc.colors[i]
+            f.write(f"{x:.6f} {y:.6f} {z:.6f} {r} {g} {b}\n")
+
+    print(f"[Recon] Saved PLY: {output_path} ({n} points)")
+
+def save_cameras_json(result, output_path: str):
+    """Save camera poses to JSON for the web viewer."""
+    import json
+
+    cameras = []
+    for pose in result.camera_poses:
+        cameras.append({
+            "frame_index": pose.frame_index,
+            "rotation": pose.rotation.tolist(),
+            "translation": pose.translation.tolist(),
+            "focal_length": pose.focal_length,
+        })
+
+    os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
+    with open(output_path, "w") as f:
+        json.dump({"cameras": cameras, "scale": result.scale_factor}, f, indent=2)
+
+    print(f"[Recon] Saved cameras: {output_path} ({len(cameras)} poses)")
 
 
 def run_pipeline(
@@ -71,64 +118,68 @@ def run_pipeline(
 
     # 4. Feed-Forward 3D Reconstruction (MapAnything / VGGT)
     print(f"\n--- [Step 4/5] Feed-Forward 3D Transformer Inference ({model_name.upper()}) ---")
-    recon_engine = ReconstructionEngine(ReconstructionConfig(model=model_name))
-    recon_result = recon_engine.reconstruct(
-        recon_input_paths,
-        initial_altitude=trajectory.mean_altitude
-    )
-    print(f"Generated 3D Point Cloud with {len(recon_result.point_cloud.points):,} points.")
-
-    # 4b. Georeferencing & Scale Anchoring via Telemetry
-    print("\n--- [Step 4b/5] Aligning Camera Trajectory to GPS/IMU Coordinates ---")
-    aligner = TrajectoryAligner()
-    cam_positions = np.array([p.translation for p in recon_result.camera_poses])
-    
-    if len(cam_positions) > 0 and len(trajectory.points) > 0:
-        R, t, scale = aligner.align_reconstruction(cam_positions, trajectory, timestamps[:len(cam_positions)])
-        # Rigidly transform point cloud into georeferenced metric coordinate frame
-        recon_result.point_cloud.points = aligner.transform_points(
-            recon_result.point_cloud.points, R, t, scale
+    recon_engine = get_engine(model_name)
+    try:
+        recon_result = recon_engine.reconstruct(
+            frame_paths=recon_input_paths,
+            initial_altitude=trajectory.mean_altitude
         )
-        print(f"Calculated Rigid Transform: Scale Factor={scale:.4f}, GPS Trajectory Synchronized.")
+        print(f"Generated 3D Point Cloud with {len(recon_result.point_cloud.points):,} points.")
 
-    # Save point cloud
-    ply_path = os.path.join(output_dir, "reconstructed_pointcloud.ply")
-    recon_engine.save_point_cloud_ply(recon_result, ply_path)
-    recon_engine.save_cameras_json(recon_result, os.path.join(output_dir, "camera_trajectory.json"))
+        # 4b. Georeferencing & Scale Anchoring via Telemetry
+        print("\n--- [Step 4b/5] Aligning Camera Trajectory to GPS/IMU Coordinates ---")
+        aligner = TrajectoryAligner()
+        cam_positions = np.array([p.translation for p in recon_result.camera_poses])
+        
+        if len(cam_positions) > 0 and len(trajectory.points) > 0:
+            import numpy as np
+            R, t, scale = aligner.align_reconstruction(cam_positions, trajectory, timestamps[:len(cam_positions)])
+            # Rigidly transform point cloud into georeferenced metric coordinate frame
+            recon_result.point_cloud.points = aligner.transform_points(
+                recon_result.point_cloud.points, R, t, scale
+            )
+            print(f"Calculated Rigid Transform: Scale Factor={scale:.4f}, GPS Trajectory Synchronized.")
 
-    # 5. Poisson Surface Reconstruction & Mesh Texturing
-    print("\n--- [Step 5/5] Poisson Surface Reconstruction & Texturing ---")
-    mesh_gen = MeshGenerator(MeshingConfig(depth=8))
-    mesh_output = mesh_gen.generate_mesh(recon_result.point_cloud)
-    obj_path = os.path.join(output_dir, "reconstructed_mesh.obj")
-    mesh_gen.export_obj(mesh_output, obj_path)
+        # Save point cloud
+        ply_path = os.path.join(output_dir, "reconstructed_pointcloud.ply")
+        save_point_cloud_ply(recon_result, ply_path)
+        save_cameras_json(recon_result, os.path.join(output_dir, "camera_trajectory.json"))
 
-    # Save pipeline summary
-    elapsed = time.time() - start_time
-    summary_data = {
-        "status": "success",
-        "elapsed_seconds": round(elapsed, 2),
-        "point_count": len(recon_result.point_cloud.points),
-        "vertex_count": len(mesh_output.vertices),
-        "face_count": len(mesh_output.triangles),
-        "flight_duration_s": trajectory.duration_s,
-        "mean_altitude_m": trajectory.mean_altitude,
-        "bounding_box": trajectory.bounding_box,
-        "artifacts": {
-            "point_cloud_ply": ply_path,
-            "mesh_obj": obj_path,
-            "trajectory_json": os.path.join(output_dir, "camera_trajectory.json")
+        # 5. Poisson Surface Reconstruction & Mesh Texturing
+        print("\n--- [Step 5/5] Poisson Surface Reconstruction & Texturing ---")
+        mesh_gen = MeshGenerator(MeshingConfig(depth=8))
+        mesh_output = mesh_gen.generate_mesh(recon_result.point_cloud)
+        obj_path = os.path.join(output_dir, "reconstructed_mesh.obj")
+        mesh_gen.export_obj(mesh_output, obj_path)
+
+        # Save pipeline summary
+        elapsed = time.time() - start_time
+        summary_data = {
+            "status": "success",
+            "elapsed_seconds": round(elapsed, 2),
+            "point_count": len(recon_result.point_cloud.points),
+            "vertex_count": len(mesh_output.vertices),
+            "face_count": len(mesh_output.triangles),
+            "flight_duration_s": trajectory.duration_s,
+            "mean_altitude_m": trajectory.mean_altitude,
+            "bounding_box": trajectory.bounding_box,
+            "artifacts": {
+                "point_cloud_ply": ply_path,
+                "mesh_obj": obj_path,
+                "trajectory_json": os.path.join(output_dir, "camera_trajectory.json")
+            }
         }
-    }
-    with open(os.path.join(output_dir, "flight_summary.json"), "w") as f:
-        json.dump(summary_data, f, indent=2)
+        with open(os.path.join(output_dir, "flight_summary.json"), "w") as f:
+            json.dump(summary_data, f, indent=2)
 
-    print("\n=================================================================")
-    print(f"  Pipeline Finished in {elapsed:.2f}s!")
-    print(f"  Mesh: {obj_path}")
-    print(f"  Point Cloud: {ply_path}")
-    print("=================================================================\n")
-    return summary_data
+        print("\n=================================================================")
+        print(f"  Pipeline Finished in {elapsed:.2f}s!")
+        print(f"  Mesh: {obj_path}")
+        print(f"  Point Cloud: {ply_path}")
+        print("=================================================================\n")
+        return summary_data
+    finally:
+        recon_engine.cleanup()
 
 
 if __name__ == "__main__":
@@ -138,7 +189,7 @@ if __name__ == "__main__":
     parser.add_argument("--telemetry", type=str, required=True, help="Path to telemetry CSV/JSON/SRT file")
     parser.add_argument("--output", type=str, default="./output", help="Output directory")
     parser.add_argument("--fps", type=float, default=2.0, help="Target extraction FPS")
-    parser.add_argument("--model", type=str, default="vggt", choices=["vggt", "mapanything", "dust3r"])
+    parser.add_argument("--model", type=str, default="demo", choices=["colmap", "vggsfm", "vggt", "mapanything", "demo", "dust3r"])
     args = parser.parse_args()
 
     run_pipeline(

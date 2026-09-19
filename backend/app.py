@@ -9,6 +9,8 @@ import os
 import shutil
 import uuid
 import asyncio
+import gc
+import time as _time
 from pathlib import Path
 from typing import Optional
 
@@ -16,6 +18,9 @@ from fastapi import FastAPI, UploadFile, File, Form, BackgroundTasks, HTTPExcept
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse, FileResponse
+
+_GPU_LOCK = asyncio.Lock()  # Ensures only 1 GPU job runs at a time
+_GPU_QUEUE_DEPTH = 0        # Track pending jobs
 
 app = FastAPI(
     title="SIH26158 Drone 3D Reconstruction Engine API",
@@ -50,10 +55,34 @@ def read_root():
     return {
         "project": "SIH26158: Single-Pass Drone Video to 3D Model",
         "status": "online",
-        "supported_models": ["MapAnything (Meta/CMU)", "VGGT / VGGT-Omega (Oxford)", "DUSt3R/MASt3R"],
+        "supported_models": ["colmap", "vggsfm", "demo", "MapAnything (Meta/CMU)", "VGGT / VGGT-Omega (Oxford)", "DUSt3R/MASt3R"],
         "api_docs": "/docs"
     }
 
+@app.get("/api/status")
+def system_status():
+    try:
+        import torch
+        gpu_available = torch.cuda.is_available()
+        gpu_name = torch.cuda.get_device_name(0) if gpu_available else None
+        gpu_memory_total = torch.cuda.get_device_properties(0).total_memory // 1024**2 if gpu_available else None
+        gpu_memory_used = torch.cuda.memory_allocated(0) // 1024**2 if gpu_available else None
+    except ImportError:
+        gpu_available = False
+        gpu_name = gpu_memory_total = gpu_memory_used = None
+    
+    active_jobs = [j for j in JOBS.values() if j.get("status") == "processing"]
+    queued_jobs = [j for j in JOBS.values() if j.get("status") == "queued"]
+    
+    return {
+        "gpu_available": gpu_available,
+        "gpu_name": gpu_name,
+        "gpu_memory_total_mb": gpu_memory_total,
+        "gpu_memory_used_mb": gpu_memory_used,
+        "active_jobs": len(active_jobs),
+        "queued_jobs": len(queued_jobs),
+        "gpu_lock_held": _GPU_LOCK.locked(),
+    }
 
 @app.get("/api/samples")
 def get_sample_datasets():
@@ -108,13 +137,17 @@ async def create_pipeline_job(
     background_tasks: BackgroundTasks,
     video: UploadFile = File(...),
     telemetry: UploadFile = File(...),
-    model: str = Form("vggt"),
+    model: str = Form("demo"),
     target_fps: float = Form(2.0),
     enable_masking: bool = Form(True)
 ):
     """
     Upload drone video + telemetry log, initialize asynchronous reconstruction job.
     """
+    valid_models = ["colmap", "vggsfm", "vggt", "mapanything", "demo"]
+    if model not in valid_models:
+        raise HTTPException(status_code=400, detail=f"Invalid model. Must be one of {valid_models}")
+
     job_id = str(uuid.uuid4())[:8]
     job_dir = OUTPUT_DIR / job_id
     job_dir.mkdir(parents=True, exist_ok=True)
@@ -137,7 +170,8 @@ async def create_pipeline_job(
         "telemetry_file": telemetry.filename,
         "model": model,
         "created_at": str(asyncio.get_event_loop().time()),
-        "summary": None
+        "summary": None,
+        "queue_position": 0
     }
 
     # Run processing asynchronously
@@ -165,43 +199,64 @@ async def execute_job_pipeline(
     enable_masking: bool
 ):
     from scripts.process_flight import run_pipeline
+    global _GPU_QUEUE_DEPTH
+    
+    _GPU_QUEUE_DEPTH += 1
+    JOBS[job_id]["queue_position"] = _GPU_QUEUE_DEPTH
 
-    try:
+    async with _GPU_LOCK:
+        _GPU_QUEUE_DEPTH -= 1
+        JOBS[job_id]["queue_position"] = 0
         JOBS[job_id]["status"] = "processing"
-        JOBS[job_id]["progress"] = 20
-        JOBS[job_id]["current_stage"] = "Parsing telemetry & extracting sharp frames..."
-        await asyncio.sleep(0.5)
 
-        JOBS[job_id]["progress"] = 45
-        JOBS[job_id]["current_stage"] = "Executing dynamic object masking (SAM2 / motion filter)..."
-        await asyncio.sleep(0.5)
+        try:
+            JOBS[job_id]["progress"] = 20
+            JOBS[job_id]["current_stage"] = "Parsing telemetry & extracting sharp frames..."
+            await asyncio.sleep(0.5)
 
-        JOBS[job_id]["progress"] = 70
-        JOBS[job_id]["current_stage"] = f"Feed-forward 3D transformer forward pass ({model.upper()})..."
+            JOBS[job_id]["progress"] = 45
+            JOBS[job_id]["current_stage"] = "Executing dynamic object masking (SAM2 / motion filter)..."
+            await asyncio.sleep(0.5)
 
-        # Run pipeline
-        summary = run_pipeline(
-            video_path=video_path,
-            telemetry_path=telemetry_path,
-            output_dir=job_dir,
-            target_fps=target_fps,
-            model_name=model,
-            enable_masking=enable_masking
-        )
+            JOBS[job_id]["progress"] = 70
+            JOBS[job_id]["current_stage"] = f"Feed-forward 3D transformer forward pass ({model.upper()})..."
 
-        JOBS[job_id]["progress"] = 90
-        JOBS[job_id]["current_stage"] = "Poisson surface meshing & georeferencing..."
-        await asyncio.sleep(0.2)
+            # Run pipeline
+            summary = run_pipeline(
+                video_path=video_path,
+                telemetry_path=telemetry_path,
+                output_dir=job_dir,
+                target_fps=target_fps,
+                model_name=model,
+                enable_masking=enable_masking
+            )
 
-        JOBS[job_id]["progress"] = 100
-        JOBS[job_id]["status"] = "completed"
-        JOBS[job_id]["current_stage"] = "Ready for 3D inspection"
-        JOBS[job_id]["summary"] = summary
+            JOBS[job_id]["progress"] = 90
+            JOBS[job_id]["current_stage"] = "Poisson surface meshing & georeferencing..."
+            await asyncio.sleep(0.2)
 
-    except Exception as e:
-        JOBS[job_id]["status"] = "failed"
-        JOBS[job_id]["error"] = str(e)
-        JOBS[job_id]["current_stage"] = f"Error: {str(e)}"
+            JOBS[job_id]["progress"] = 100
+            JOBS[job_id]["status"] = "completed"
+            JOBS[job_id]["current_stage"] = "Ready for 3D inspection"
+            JOBS[job_id]["summary"] = summary
+
+        except Exception as e:
+            JOBS[job_id]["status"] = "failed"
+            JOBS[job_id]["error"] = str(e)
+            JOBS[job_id]["current_stage"] = f"Error: {str(e)}"
+        finally:
+            # Always release GPU memory even on error
+            try:
+                import torch
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+            except ImportError:
+                pass
+            try:
+                import gc
+                gc.collect()
+            except Exception:
+                pass
 
 
 @app.get("/api/jobs/{job_id}")

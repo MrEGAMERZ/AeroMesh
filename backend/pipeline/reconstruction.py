@@ -1,6 +1,9 @@
 """
 reconstruction.py — Feed-Forward 3D Transformer Reconstruction Engine
 
+[DEPRECATED] This file is a monolith and is deprecated.
+Please use the new pluggable engine system in `backend/pipeline/engines/` instead.
+
 Wraps feed-forward 3D reconstruction models (MapAnything, VGGT, DUSt3R)
 to produce point clouds and camera poses from drone video frames in a
 single forward pass — no iterative bundle adjustment required.
