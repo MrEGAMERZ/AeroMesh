@@ -11,10 +11,16 @@ class DemoEngine(BaseReconstructionEngine):
     def get_capabilities(self) -> dict:
         return {"requires_gpu": False, "metric_scale": False, "engine": "demo"}
 
-    def validate_inputs(self, frame_paths: list[str], telemetry=None) -> None:
-        """Validate that there are frames provided."""
+    def validate_inputs(self, frame_paths: list, telemetry=None) -> None:
+        """Validate that frames are provided and all paths exist on disk."""
         if not frame_paths:
             raise ValueError("No frames provided for DemoEngine reconstruction.")
+        missing = [p for p in frame_paths if not __import__('os').path.exists(p)]
+        if missing:
+            raise ValueError(
+                f"[DemoEngine] {len(missing)} frame file(s) not found: {missing[:3]}"
+            )
+
 
     def reconstruct(
         self,
