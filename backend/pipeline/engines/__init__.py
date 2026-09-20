@@ -2,14 +2,21 @@ from .base import BaseReconstructionEngine, ReconstructionResult, PointCloud, Ca
 from .demo import DemoEngine
 
 def get_engine(name: str) -> BaseReconstructionEngine:
-    name = name.lower()
+    name = name.lower().strip()
     if name == "colmap":
         from .colmap import ColmapEngine
         return ColmapEngine()
-    elif name in ("vggsfm", "vggt", "mapanything"):
+    elif name in ("vggsfm", "vggt", "mapanything", "dust3r"):
         from .vggsfm import VGGSfMEngine
         return VGGSfMEngine(model_name=name)
+    elif name in ("sfm", "opencv", "default"):
+        from .sfm import SfMEngine
+        return SfMEngine()
     elif name == "demo":
         return DemoEngine()
     else:
-        raise ValueError(f"Unknown engine: {name!r}. Available: colmap, vggsfm, demo")
+        # Unknown engine: fall back to SfM (real reconstruction)
+        print(f"[Engine] Unknown engine '{name}', falling back to SfM (real reconstruction).")
+        from .sfm import SfMEngine
+        return SfMEngine()
+

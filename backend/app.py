@@ -83,7 +83,7 @@ def get_compute_capabilities():
             "device": gpu_name,
             "vram_gb": gpu_memory,
             "status": "available",
-            "engines": ["vggsfm", "colmap", "demo"]
+            "engines": ["sfm", "vggsfm", "colmap", "demo"]
         })
     else:
         nodes.append({
@@ -92,7 +92,7 @@ def get_compute_capabilities():
             "device": "System CPU",
             "vram_gb": 0,
             "status": "available",
-            "engines": ["colmap", "demo"]
+            "engines": ["sfm", "colmap", "demo"]
         })
         
     # 2. Remote / University Cluster (mocked)
@@ -102,7 +102,7 @@ def get_compute_capabilities():
         "device": "NVIDIA H200 PCIe",
         "vram_gb": 141.0,
         "status": "unavailable",
-        "engines": ["vggsfm", "vggt", "colmap", "demo"]
+        "engines": ["vggsfm", "vggt", "sfm", "colmap", "demo"]
     })
     
     # 3. Cloud GPU (mocked)
@@ -112,7 +112,7 @@ def get_compute_capabilities():
         "device": "AWS g6.xlarge (L4)",
         "vram_gb": 24.0,
         "status": "unavailable",
-        "engines": ["vggsfm", "vggt", "mapanything", "colmap"]
+        "engines": ["vggsfm", "vggt", "sfm", "mapanything", "colmap"]
     })
     
     return {"compute_backends": nodes}
@@ -204,7 +204,7 @@ async def create_pipeline_job(
     """
     Upload drone video + telemetry log, initialize asynchronous reconstruction job.
     """
-    valid_models = ["colmap", "vggsfm", "vggt", "mapanything", "demo"]
+    valid_models = ["sfm", "colmap", "vggsfm", "vggt", "mapanything", "demo"]
     if model not in valid_models:
         raise HTTPException(status_code=400, detail=f"Invalid model. Must be one of {valid_models}")
 

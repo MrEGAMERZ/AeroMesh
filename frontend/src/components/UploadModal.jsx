@@ -8,7 +8,7 @@ export default function UploadModal({ isOpen, onClose, onStartProcessing }) {
   const [computeBackend, setComputeBackend] = useState('');
   const [backendsList, setBackendsList] = useState([]);
   const [engine, setEngine] = useState('demo');
-  const [fps, setFps] = useState('2.0');
+  const [fps, setFps] = useState('4.0');
   const [masking, setMasking] = useState(true);
 
   useEffect(() => {
@@ -141,9 +141,19 @@ export default function UploadModal({ isOpen, onClose, onStartProcessing }) {
             <div className="form-group">
               <label className="input-label">Reconstruction Engine (HOW)</label>
               <select value={engine} onChange={(e) => setEngine(e.target.value)} className="form-select">
-                {(backendsList.find(b => b.id === computeBackend)?.engines || []).map(e => (
-                   <option key={e} value={e}>{e.toUpperCase()}</option>
-                ))}
+                {(backendsList.find(b => b.id === computeBackend)?.engines || []).map(eng => {
+                  const labels = {
+                    sfm: '🔬 SfM (Real Reconstruction)',
+                    colmap: '📐 COLMAP (Classical)',
+                    vggsfm: '🤖 VGGSfM (AI · GPU)',
+                    vggt: '🤖 VGGT (AI · GPU)',
+                    mapanything: '🌍 MapAnything (AI · GPU)',
+                    demo: '🧪 Demo (Synthetic Test)',
+                  };
+                  return (
+                    <option key={eng} value={eng}>{labels[eng] || eng.toUpperCase()}</option>
+                  );
+                })}
               </select>
             </div>
           </div>
