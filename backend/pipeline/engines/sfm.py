@@ -90,41 +90,54 @@ class SfMEngine(BaseReconstructionEngine):
 
         num_pairs_ok = 0
 
-        for i in range(len(frames) - 1):
-            img1 = imgs_all[i]
-            kp1, des1 = kps_all[i], des_all[i]
-            kp2, des2 = kps_all[i + 1], des_all[i + 1]
+        # Multi-stride matching: match (i, i+1), (i, i+2), and (i, i+4)
+        # This solves the singlepass-probe finding: consecutive frames have too little baseline!
+        pairs_to_match = []
+        n_f = len(frames)
+        for i in range(n_f - 1):
+            pairs_to_match.append((i, i + 1, True)) # update camera pose chain on consecutive
+            if i + 2 < n_f:
+                pairs_to_match.append((i, i + 2, False))
+            if i + 4 < n_f:
+                pairs_to_match.append((i, i + 4, False))
+
+        for idx1, idx2, is_chain in pairs_to_match:
+            img1, img2 = imgs_all[idx1], imgs_all[idx2]
+            kp1, des1 = kps_all[idx1], des_all[idx1]
+            kp2, des2 = kps_all[idx2], des_all[idx2]
 
             if des1 is None or des2 is None or len(des1) < 8 or len(des2) < 8:
-                camera_poses.append(CameraPose(frame_index=i+1, rotation=R_global.copy(),
-                                               translation=t_global.flatten(), focal_length=focal))
+                if is_chain and len(camera_poses) <= idx2:
+                    camera_poses.append(CameraPose(frame_index=idx2, rotation=R_global.copy(),
+                                                   translation=t_global.flatten(), focal_length=focal))
                 continue
 
             try:
                 raw_matches = flann.knnMatch(des1, des2, k=2)
             except Exception as e:
-                print(f"[SfM]   Pair {i}-{i+1}: match failed: {e}")
-                camera_poses.append(CameraPose(frame_index=i+1, rotation=R_global.copy(),
-                                               translation=t_global.flatten(), focal_length=focal))
+                if is_chain and len(camera_poses) <= idx2:
+                    camera_poses.append(CameraPose(frame_index=idx2, rotation=R_global.copy(),
+                                                   translation=t_global.flatten(), focal_length=focal))
                 continue
 
-            # Lowe's ratio test
-            good = [m for m, n in raw_matches if m.distance < 0.7 * n.distance]
-            print(f"[SfM]   Pair {i}-{i+1}: {len(good)} good matches")
+            # Lowe's ratio test (adaptive)
+            good = [m for m, n in raw_matches if m.distance < 0.75 * n.distance]
 
             if len(good) < 8:
-                camera_poses.append(CameraPose(frame_index=i+1, rotation=R_global.copy(),
-                                               translation=t_global.flatten(), focal_length=focal))
+                if is_chain and len(camera_poses) <= idx2:
+                    camera_poses.append(CameraPose(frame_index=idx2, rotation=R_global.copy(),
+                                                   translation=t_global.flatten(), focal_length=focal))
                 continue
 
             pts1 = np.float32([kp1[m.queryIdx].pt for m in good])
             pts2 = np.float32([kp2[m.trainIdx].pt for m in good])
 
             E, mask_E = cv2.findEssentialMat(pts1, pts2, K,
-                                              method=cv2.RANSAC, prob=0.999, threshold=1.0)
+                                              method=cv2.RANSAC, prob=0.999, threshold=1.2)
             if E is None or mask_E is None:
-                camera_poses.append(CameraPose(frame_index=i+1, rotation=R_global.copy(),
-                                               translation=t_global.flatten(), focal_length=focal))
+                if is_chain and len(camera_poses) <= idx2:
+                    camera_poses.append(CameraPose(frame_index=idx2, rotation=R_global.copy(),
+                                                   translation=t_global.flatten(), focal_length=focal))
                 continue
 
             mask_E = mask_E.ravel().astype(bool)
@@ -132,21 +145,25 @@ class SfMEngine(BaseReconstructionEngine):
             pts2_in = pts2[mask_E]
 
             if len(pts1_in) < 5:
-                camera_poses.append(CameraPose(frame_index=i+1, rotation=R_global.copy(),
-                                               translation=t_global.flatten(), focal_length=focal))
+                if is_chain and len(camera_poses) <= idx2:
+                    camera_poses.append(CameraPose(frame_index=idx2, rotation=R_global.copy(),
+                                                   translation=t_global.flatten(), focal_length=focal))
                 continue
 
             n_ok, R, t, pose_mask = cv2.recoverPose(E, pts1_in, pts2_in, K)
             if n_ok < 4:
-                camera_poses.append(CameraPose(frame_index=i+1, rotation=R_global.copy(),
-                                               translation=t_global.flatten(), focal_length=focal))
+                if is_chain and len(camera_poses) <= idx2:
+                    camera_poses.append(CameraPose(frame_index=idx2, rotation=R_global.copy(),
+                                                   translation=t_global.flatten(), focal_length=focal))
                 continue
 
-            # Update global camera chain
-            R_global = R @ R_global
-            t_global = R @ t_global + t
-            camera_poses.append(CameraPose(frame_index=i+1, rotation=R_global.copy(),
-                                           translation=t_global.flatten(), focal_length=focal))
+            # Update global camera chain only on consecutive steps
+            if is_chain:
+                R_global = R @ R_global
+                t_global = R @ t_global + t
+                if len(camera_poses) <= idx2:
+                    camera_poses.append(CameraPose(frame_index=idx2, rotation=R_global.copy(),
+                                                   translation=t_global.flatten(), focal_length=focal))
 
             # Triangulate
             pose_mask = pose_mask.ravel().astype(bool)

@@ -4,11 +4,23 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { PLYLoader } from "three/addons/loaders/PLYLoader.js";
 
 export default function Viewer3D({ flightData, measurementMode, measuredPoints = [], onAddMeasurementPoint, activePose }) {
+  const [walkMode, setWalkMode] = useState(false);
+  const walkModeRef = useRef(false);
+
   const mountRef = useRef(null);
   const sceneRef = useRef(null);
   const cameraRef = useRef(null);
   const rendererRef = useRef(null);
   const controlsRef = useRef(null);
+
+  useEffect(() => {
+    walkModeRef.current = walkMode;
+    if (controlsRef.current && cameraRef.current) {
+      if (walkMode) {
+        cameraRef.current.position.y = 5.0; // human eye level
+      }
+    }
+  }, [walkMode]);
 
   const objRef = useRef({
     pcd: null,
@@ -89,10 +101,47 @@ export default function Viewer3D({ flightData, measurementMode, measuredPoints =
     const dm = ren.domElement;
     dm.addEventListener("pointerup", onPU);
 
+    // Keyboard state for Walk Mode
+    const keys = { w: false, a: false, s: false, d: false, q: false, e: false };
+    const onKD = (e) => {
+      const k = e.key.toLowerCase();
+      if (k in keys) keys[k] = true;
+    };
+    const onKU = (e) => {
+      const k = e.key.toLowerCase();
+      if (k in keys) keys[k] = false;
+    };
+    window.addEventListener("keydown", onKD);
+    window.addEventListener("keyup", onKU);
+
     let raf;
     const anim = () => {
       raf = requestAnimationFrame(anim);
-      controls.update();
+      
+      if (walkModeRef.current) {
+        // First-Person Walk navigation
+        const speed = 0.8;
+        const forward = new THREE.Vector3();
+        cam.getWorldDirection(forward);
+        forward.y = 0;
+        forward.normalize();
+
+        const right = new THREE.Vector3();
+        right.crossVectors(forward, cam.up).normalize();
+
+        if (keys.w) cam.position.addScaledVector(forward, speed);
+        if (keys.s) cam.position.addScaledVector(forward, -speed);
+        if (keys.a) cam.position.addScaledVector(right, -speed);
+        if (keys.d) cam.position.addScaledVector(right, speed);
+        if (keys.q) cam.position.y -= speed * 0.5;
+        if (keys.e) cam.position.y += speed * 0.5;
+
+        // Keep orbit target ahead of camera so looking around stays intuitive
+        controls.target.copy(cam.position).add(forward.multiplyScalar(5));
+      } else {
+        controls.update();
+      }
+
       ren.render(scene, cam);
     };
     anim();
@@ -108,6 +157,8 @@ export default function Viewer3D({ flightData, measurementMode, measuredPoints =
     return () => { 
       cancelAnimationFrame(raf); 
       dm.removeEventListener("pointerup", onPU); 
+      window.removeEventListener("keydown", onKD);
+      window.removeEventListener("keyup", onKU);
       window.removeEventListener("resize", onR); 
       ren.dispose(); 
       controls.dispose();
@@ -242,6 +293,60 @@ export default function Viewer3D({ flightData, measurementMode, measuredPoints =
   }, [activePose]);
 
   return (
-    <div ref={mountRef} style={{ width: "100%", height: "100%", overflow: "hidden" }} />
+    <div style={{ position: "relative", width: "100%", height: "100%", overflow: "hidden" }}>
+      <div ref={mountRef} style={{ width: "100%", height: "100%" }} />
+
+      {/* Floating View Controls HUD */}
+      <div style={{
+        position: "absolute",
+        top: "16px",
+        left: "16px",
+        zIndex: 10,
+        display: "flex",
+        gap: "8px",
+        background: "rgba(15, 23, 42, 0.8)",
+        backdropFilter: "blur(8px)",
+        padding: "6px 10px",
+        borderRadius: "8px",
+        border: "1px solid rgba(255, 255, 255, 0.12)"
+      }}>
+        <button
+          type="button"
+          onClick={() => setWalkMode(false)}
+          className={!walkMode ? "glow-btn" : "secondary-btn"}
+          style={{ padding: "6px 12px", fontSize: "12px", borderRadius: "6px", cursor: "pointer" }}
+        >
+          🚁 Orbit Survey
+        </button>
+        <button
+          type="button"
+          onClick={() => setWalkMode(true)}
+          className={walkMode ? "glow-btn" : "secondary-btn"}
+          style={{ padding: "6px 12px", fontSize: "12px", borderRadius: "6px", cursor: "pointer" }}
+        >
+          🚶 Walk Mode (WASD)
+        </button>
+      </div>
+
+      {walkMode && (
+        <div style={{
+          position: "absolute",
+          bottom: "20px",
+          left: "50%",
+          transform: "translateX(-50%)",
+          zIndex: 10,
+          background: "rgba(15, 23, 42, 0.9)",
+          color: "#38bdf8",
+          padding: "8px 18px",
+          borderRadius: "20px",
+          fontSize: "12px",
+          border: "1px solid rgba(56, 189, 248, 0.4)",
+          boxShadow: "0 0 15px rgba(56, 189, 248, 0.25)",
+          pointerEvents: "none"
+        }}>
+          🕹️ <b>Walk Mode Active:</b> Use <b>W A S D</b> to walk, <b>Q/E</b> to ascend/descend, drag mouse to look around
+        </div>
+      )}
+    </div>
   );
 }

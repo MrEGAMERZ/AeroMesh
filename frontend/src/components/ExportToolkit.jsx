@@ -42,10 +42,28 @@ export default function ExportToolkit({ jobId }) {
         <button 
           className="secondary-btn" 
           style={{ width: '100%', justifyContent: 'flex-start', padding: '10px' }}
+          onClick={() => handleDownload('reconstructed_mesh.obj')}
+        >
+          <FileBox size={16} />
+          <span style={{ marginLeft: '8px' }}>Download Solid Mesh (.OBJ)</span>
+        </button>
+
+        <button 
+          className="secondary-btn" 
+          style={{ width: '100%', justifyContent: 'flex-start', padding: '10px' }}
           onClick={() => handleDownload('camera_trajectory.json')}
         >
           <FileJson size={16} />
-          <span style={{ marginLeft: '8px' }}>Download Camera Trajectory (.JSON)</span>
+          <span style={{ marginLeft: '8px' }}>Download Trajectory (.JSON)</span>
+        </button>
+
+        <button 
+          className="secondary-btn" 
+          style={{ width: '100%', justifyContent: 'flex-start', padding: '10px', borderColor: '#38bdf8' }}
+          onClick={() => handleDownload('accuracy_report.json')}
+        >
+          <FileJson size={16} className="accent-cyan-text" />
+          <span style={{ marginLeft: '8px' }}>Download Accuracy Report (.JSON)</span>
         </button>
       </div>
     </div>

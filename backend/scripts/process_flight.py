@@ -168,6 +168,17 @@ def run_pipeline(
         ply_path = os.path.join(output_dir, "reconstructed_pointcloud.ply")
         mesh_gen.export_ply(mesh_output, ply_path)
 
+        # 6. Quantitative Quality & Accuracy Audit Report
+        from pipeline.quality_report import QualityAuditor
+        audit_report = QualityAuditor.compute_audit(
+            points=mesh_output.vertices,
+            focal_px=recon_result.camera_poses[0].focal_length if recon_result.camera_poses else 1000.0,
+            flight_duration_s=trajectory.duration_s if trajectory else 60.0
+        )
+        audit_path = os.path.join(output_dir, "accuracy_report.json")
+        with open(audit_path, "w") as f:
+            json.dump(audit_report, f, indent=2)
+
         # Save pipeline summary
         elapsed = time.time() - start_time
         summary_data = {
@@ -176,13 +187,15 @@ def run_pipeline(
             "point_count": len(recon_result.point_cloud.points),
             "vertex_count": len(mesh_output.vertices),
             "face_count": len(mesh_output.triangles),
+            "quality_audit": audit_report,
             "flight_duration_s": trajectory.duration_s if trajectory else None,
             "mean_altitude_m": trajectory.mean_altitude if trajectory else None,
             "bounding_box": trajectory.bounding_box if trajectory else None,
             "artifacts": {
                 "point_cloud_ply": ply_path,
                 "mesh_obj": obj_path,
-                "trajectory_json": os.path.join(output_dir, "camera_trajectory.json")
+                "trajectory_json": os.path.join(output_dir, "camera_trajectory.json"),
+                "accuracy_report": audit_path
             }
         }
         with open(os.path.join(output_dir, "flight_summary.json"), "w") as f:
