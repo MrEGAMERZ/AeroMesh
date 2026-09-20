@@ -7,7 +7,7 @@ export default function UploadModal({ isOpen, onClose, onStartProcessing }) {
   const [telemetryFile, setTelemetryFile] = useState(null);
   const [computeBackend, setComputeBackend] = useState('');
   const [backendsList, setBackendsList] = useState([]);
-  const [engine, setEngine] = useState('demo');
+  const [engine, setEngine] = useState('genai_chunk');
   const [fps, setFps] = useState('4.0');
   const [masking, setMasking] = useState(true);
 
@@ -143,8 +143,9 @@ export default function UploadModal({ isOpen, onClose, onStartProcessing }) {
               <select value={engine} onChange={(e) => setEngine(e.target.value)} className="form-select">
                 {(backendsList.find(b => b.id === computeBackend)?.engines || []).map(eng => {
                   const labels = {
-                    sfm: '🔬 SfM (Real Reconstruction)',
-                    colmap: '📐 COLMAP (Classical)',
+                    genai_chunk: '🤖 Generative AI (Chunk-by-Chunk)',
+                    sfm: '🔬 SfM (Classical Sparse)',
+                    colmap: '📐 COLMAP (Dense CPU)',
                     vggsfm: '🤖 VGGSfM (AI · GPU)',
                     vggt: '🤖 VGGT (AI · GPU)',
                     mapanything: '🌍 MapAnything (AI · GPU)',

@@ -149,7 +149,18 @@ def run_pipeline(
         # 5. Poisson Surface Reconstruction & Mesh Texturing
         print("\n--- [Step 5/5] Poisson Surface Reconstruction & Texturing ---")
         mesh_gen = MeshGenerator(MeshingConfig(depth=8))
-        mesh_output = mesh_gen.generate_mesh(recon_result.point_cloud)
+        
+        if recon_result.mesh_data:
+            from pipeline.meshing import MeshOutput
+            mesh_output = MeshOutput(
+                vertices=recon_result.mesh_data["vertices"],
+                triangles=recon_result.mesh_data["triangles"],
+                vertex_colors=recon_result.mesh_data["colors"]
+            )
+            print("[Meshing] Using explicit solid geometry provided by the Generative AI engine.")
+        else:
+            mesh_output = mesh_gen.generate_mesh(recon_result.point_cloud)
+            
         obj_path = os.path.join(output_dir, "reconstructed_mesh.obj")
         mesh_gen.export_obj(mesh_output, obj_path)
         

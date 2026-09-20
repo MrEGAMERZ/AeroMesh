@@ -9,6 +9,9 @@ def get_engine(name: str) -> BaseReconstructionEngine:
     elif name in ("vggsfm", "vggt", "mapanything", "dust3r"):
         from .vggsfm import VGGSfMEngine
         return VGGSfMEngine(model_name=name)
+    elif name in ("genai_chunk", "minecraft", "generative"):
+        from .generative_chunk import GenerativeChunkEngine
+        return GenerativeChunkEngine()
     elif name in ("sfm", "opencv", "default"):
         from .sfm import SfMEngine
         return SfMEngine()

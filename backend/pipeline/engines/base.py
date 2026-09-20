@@ -31,6 +31,7 @@ class ReconstructionResult:
     runtime_seconds: float = 0.0
     gpu_memory_mb: Optional[float] = None
     diagnostics: dict = field(default_factory=dict)
+    mesh_data: Optional[dict] = None  # Explicit mesh {"vertices": array, "triangles": array, "colors": array}
 
 class BaseReconstructionEngine(ABC):
     """

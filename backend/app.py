@@ -83,7 +83,7 @@ def get_compute_capabilities():
             "device": gpu_name,
             "vram_gb": gpu_memory,
             "status": "available",
-            "engines": ["sfm", "vggsfm", "colmap", "demo"]
+            "engines": ["genai_chunk", "sfm", "vggsfm", "colmap", "demo"]
         })
     else:
         nodes.append({
@@ -92,7 +92,7 @@ def get_compute_capabilities():
             "device": "System CPU",
             "vram_gb": 0,
             "status": "available",
-            "engines": ["sfm", "colmap", "demo"]
+            "engines": ["genai_chunk", "sfm", "colmap", "demo"]
         })
         
     # 2. Remote / University Cluster (mocked)
@@ -102,7 +102,7 @@ def get_compute_capabilities():
         "device": "NVIDIA H200 PCIe",
         "vram_gb": 141.0,
         "status": "unavailable",
-        "engines": ["vggsfm", "vggt", "sfm", "colmap", "demo"]
+        "engines": ["vggsfm", "genai_chunk", "vggt", "sfm", "colmap", "demo"]
     })
     
     # 3. Cloud GPU (mocked)
@@ -112,10 +112,15 @@ def get_compute_capabilities():
         "device": "AWS g6.xlarge (L4)",
         "vram_gb": 24.0,
         "status": "unavailable",
-        "engines": ["vggsfm", "vggt", "sfm", "mapanything", "colmap"]
+        "engines": ["vggsfm", "vggt", "genai_chunk", "sfm", "mapanything", "colmap"]
     })
     
     return {"compute_backends": nodes}
+
+@app.get("/api/compute/status")
+async def compute_status():
+    """Mock endpoint to check backend health."""
+    return {"status": "ok", "gpu_utilization": 0}
 
 @app.get("/api/status")
 
@@ -192,19 +197,19 @@ def get_sample_datasets():
 
 
 @app.post("/api/jobs/create")
-async def create_pipeline_job(
+async def create_job(
     background_tasks: BackgroundTasks,
     video: UploadFile = File(...),
     telemetry: Optional[UploadFile] = File(None),
-    model: str = Form("demo"),
-    compute_backend: str = Form("local_gpu"),
+    model: str = Form("genai_chunk"),
+    compute_backend: str = Form("local_cpu"),
     target_fps: float = Form(2.0),
-    enable_masking: bool = Form(True)
+    enable_masking: bool = Form(False)
 ):
     """
     Upload drone video + telemetry log, initialize asynchronous reconstruction job.
     """
-    valid_models = ["sfm", "colmap", "vggsfm", "vggt", "mapanything", "demo"]
+    valid_models = ["genai_chunk", "sfm", "colmap", "vggsfm", "vggt", "mapanything", "demo"]
     if model not in valid_models:
         raise HTTPException(status_code=400, detail=f"Invalid model. Must be one of {valid_models}")
 
