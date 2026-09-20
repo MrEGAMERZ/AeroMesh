@@ -101,7 +101,7 @@ def run_pipeline(
     # 2. Video Frame Ingestion & Sharpness Filter
     print("\n--- [Step 2/5] Extracting Frames with Laplacian Blur Filtering ---")
     frames_dir = os.path.join(output_dir, "extracted_frames")
-    ingestor = VideoIngestor(IngestConfig(target_fps=target_fps, blur_threshold=90.0))
+    ingestor = VideoIngestor(IngestConfig(target_fps=target_fps, blur_threshold=60.0, resize_max_dim=1920))
     valid_frames = ingestor.extract_frames(video_path, frames_dir)
     print(f"Extracted {len(valid_frames)} sharp, non-redundant frames.")
 
