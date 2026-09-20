@@ -359,12 +359,77 @@ async def execute_job_pipeline(
                 pass
 
 
+@app.get("/api/projects")
+def list_projects():
+    """List all saved reconstruction projects and recent runs."""
+    projects = []
+    if OUTPUT_DIR.exists():
+        for job_dir in sorted(OUTPUT_DIR.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True):
+            if not job_dir.is_dir():
+                continue
+            job_id = job_dir.name
+            summary_file = job_dir / "flight_summary.json"
+            
+            project_info = {
+                "id": job_id,
+                "title": f"Survey #{job_id}",
+                "status": "completed",
+                "created_at": job_dir.stat().st_mtime,
+                "artifacts": []
+            }
+            
+            if summary_file.exists():
+                try:
+                    with open(summary_file, "r") as f:
+                        sdata = json.load(f)
+                    project_info["summary"] = sdata
+                    project_info["point_count"] = sdata.get("point_count", 0)
+                    project_info["vertex_count"] = sdata.get("vertex_count", 0)
+                    project_info["elapsed_seconds"] = sdata.get("elapsed_seconds", 0)
+                    project_info["quality_audit"] = sdata.get("quality_audit")
+                except Exception:
+                    pass
+            
+            # Check existing artifacts
+            if (job_dir / "reconstructed_pointcloud.ply").exists():
+                project_info["artifacts"].append("point_cloud_ply")
+            if (job_dir / "reconstructed_mesh.obj").exists():
+                project_info["artifacts"].append("mesh_obj")
+            if (job_dir / "camera_trajectory.json").exists():
+                project_info["artifacts"].append("trajectory_json")
+            if (job_dir / "accuracy_report.json").exists():
+                project_info["artifacts"].append("accuracy_report")
+                
+            projects.append(project_info)
+            
+    return {"projects": projects[:30]}
+
+
 @app.get("/api/jobs/{job_id}")
 def get_job_status(job_id: str):
-    """Retrieve job progress, logs, and artifacts."""
-    if job_id not in JOBS:
-        raise HTTPException(status_code=404, detail="Job not found")
-    return JOBS[job_id]
+    """Retrieve job progress, logs, and artifacts (with disk persistence)."""
+    if job_id in JOBS:
+        return JOBS[job_id]
+
+    # Persistent fallback: check disk if job completed in a previous session
+    job_dir = OUTPUT_DIR / job_id
+    summary_file = job_dir / "flight_summary.json"
+    if job_dir.exists() and summary_file.exists():
+        try:
+            with open(summary_file, "r") as f:
+                sdata = json.load(f)
+            return {
+                "job_id": job_id,
+                "status": "completed",
+                "progress": 100,
+                "current_stage": "Ready for 3D inspection",
+                "summary": sdata,
+                "is_persisted": True
+            }
+        except Exception:
+            pass
+
+    raise HTTPException(status_code=404, detail="Job not found")
 
 
 @app.get("/api/jobs/{job_id}/artifact/{artifact_name}")

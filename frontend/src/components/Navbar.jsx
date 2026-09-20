@@ -7,7 +7,8 @@ import {
   Building2,
   Mountain,
   Route,
-  Activity
+  Activity,
+  Folder
 } from 'lucide-react';
 
 const ENGINES = [
@@ -26,6 +27,7 @@ export default function Navbar({
   activeModel,
   onModelChange,
   onOpenUpload,
+  onOpenProjects,
   onExport,
   isProcessing,
   activeSampleId,
@@ -106,6 +108,17 @@ export default function Navbar({
       <div className="topbar-right">
         <button
           type="button"
+          onClick={onOpenProjects}
+          className="topbar-btn"
+          title="Open Recent Projects & Saved 3D Surveys"
+          style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+        >
+          <Folder size={13} className="accent-cyan-text" />
+          <span>Projects</span>
+        </button>
+
+        <button
+          type="button"
           onClick={onToggleSidebar}
           className={`topbar-btn ${showSidebar ? "primary-action" : ""}`}
           title="Toggle Flight Telemetry & Pipeline Stream Sidebar"
@@ -122,9 +135,8 @@ export default function Navbar({
           title="Upload drone video & telemetry"
         >
           <UploadCloud size={13} />
-          <span>New Flight</span>
+          <span>New Project</span>
         </button>
-
       </div>
     </header>
   );

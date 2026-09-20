@@ -5,6 +5,7 @@ import { PLYLoader } from "three/addons/loaders/PLYLoader.js";
 
 export default function Viewer3D({ flightData, measurementMode, measuredPoints = [], onAddMeasurementPoint, activePose }) {
   const [walkMode, setWalkMode] = useState(false);
+  const [wireframe, setWireframe] = useState(false);
   const walkModeRef = useRef(false);
 
   const mountRef = useRef(null);
@@ -21,6 +22,22 @@ export default function Viewer3D({ flightData, measurementMode, measuredPoints =
       }
     }
   }, [walkMode]);
+
+  useEffect(() => {
+    if (objRef.current.mesh && objRef.current.mesh.material) {
+      objRef.current.mesh.material.wireframe = wireframe;
+    }
+  }, [wireframe]);
+
+  const handleResetCamera = () => {
+    if (cameraRef.current && controlsRef.current && objRef.current.mesh) {
+      objRef.current.mesh.geometry.computeBoundingSphere();
+      const center = objRef.current.mesh.geometry.boundingSphere.center;
+      const radius = objRef.current.mesh.geometry.boundingSphere.radius;
+      cameraRef.current.position.set(center.x, center.y + radius * 1.2, center.z + radius * 1.5);
+      controlsRef.current.target.copy(center);
+    }
+  };
 
   const objRef = useRef({
     pcd: null,
@@ -316,7 +333,7 @@ export default function Viewer3D({ flightData, measurementMode, measuredPoints =
           className={!walkMode ? "glow-btn" : "secondary-btn"}
           style={{ padding: "6px 12px", fontSize: "12px", borderRadius: "6px", cursor: "pointer" }}
         >
-          🚁 Orbit Survey
+          🚁 Orbit
         </button>
         <button
           type="button"
@@ -324,7 +341,25 @@ export default function Viewer3D({ flightData, measurementMode, measuredPoints =
           className={walkMode ? "glow-btn" : "secondary-btn"}
           style={{ padding: "6px 12px", fontSize: "12px", borderRadius: "6px", cursor: "pointer" }}
         >
-          🚶 Walk Mode (WASD)
+          🚶 Walk (WASD)
+        </button>
+        <button
+          type="button"
+          onClick={() => setWireframe((w) => !w)}
+          className={wireframe ? "glow-btn" : "secondary-btn"}
+          style={{ padding: "6px 12px", fontSize: "12px", borderRadius: "6px", cursor: "pointer" }}
+          title="Toggle wireframe polygon topology like in Blender"
+        >
+          🌐 {wireframe ? "Solid Mesh" : "Wireframe"}
+        </button>
+        <button
+          type="button"
+          onClick={handleResetCamera}
+          className="secondary-btn"
+          style={{ padding: "6px 12px", fontSize: "12px", borderRadius: "6px", cursor: "pointer" }}
+          title="Reset camera focus to 3D center"
+        >
+          🎯 Center
         </button>
       </div>
 
