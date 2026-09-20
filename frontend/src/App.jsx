@@ -50,13 +50,18 @@ export default function App() {
     setIsProcessing(true);
     setProcessProgress(0);
     setProcessStage('Uploading files to backend...');
+    setShowSidebar(true);   // always show sidebar so user can see progress
+    setFlightData(null);    // clear previous model
+    setMeasuredPoints([]);  // clear previous measurements
     
     try {
       const result = await createJob(videoFile, telemetryFile, engine, computeBackend, fps, masking);
       setJobId(result.job_id);
     } catch (err) {
-      alert("Error creating job: " + err.message);
       setIsProcessing(false);
+      setProcessStage('Upload failed — check the backend is running on port 8000');
+      console.error("Job creation error:", err);
+      alert("Upload failed: " + err.message + "\n\nMake sure the backend is running:\n  cd backend && uvicorn app:app --reload");
     }
   };
 

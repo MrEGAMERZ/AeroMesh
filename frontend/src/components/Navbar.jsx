@@ -125,15 +125,6 @@ export default function Navbar({
           <span>New Flight</span>
         </button>
 
-        <button
-          id="btn-export-mesh"
-          onClick={onExport}
-          className="topbar-btn"
-          title="Export georeferenced OBJ model"
-        >
-          <Download size={13} />
-          <span>Export 3D</span>
-        </button>
       </div>
     </header>
   );

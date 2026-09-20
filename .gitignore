@@ -39,3 +39,5 @@ screenshot.png
 Thumbs.db
 .vscode/
 .idea/
+backend/data/
+*.py.bak

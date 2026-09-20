@@ -11,6 +11,7 @@ import sys
 import argparse
 import json
 import time
+import numpy as np
 from pathlib import Path
 
 # Add backend directory to sys.path
@@ -136,7 +137,6 @@ def run_pipeline(
         cam_positions = np.array([p.translation for p in recon_result.camera_poses])
         
         if trajectory and len(cam_positions) > 0 and len(trajectory.points) > 0:
-            import numpy as np
             R, t, scale = aligner.align_reconstruction(cam_positions, trajectory, timestamps[:len(cam_positions)])
             # Rigidly transform point cloud into georeferenced metric coordinate frame
             recon_result.point_cloud.points = aligner.transform_points(
@@ -187,7 +187,6 @@ def run_pipeline(
 
 
 if __name__ == "__main__":
-    import numpy as np
     parser = argparse.ArgumentParser(description="SIH26158 Single-Pass Drone Video to 3D Pipeline")
     parser.add_argument("--video", type=str, required=True, help="Path to input video file")
     parser.add_argument("--telemetry", type=str, required=True, help="Path to telemetry CSV/JSON/SRT file")

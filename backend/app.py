@@ -212,8 +212,9 @@ async def create_pipeline_job(
     job_dir = OUTPUT_DIR / job_id
     job_dir.mkdir(parents=True, exist_ok=True)
 
-    # Save uploaded files
-    video_path = job_dir / video.filename
+    # Save uploaded files — sanitize filename (can be None on some browsers)
+    safe_video_name = video.filename or f"video_{job_id}.mp4"
+    video_path = job_dir / safe_video_name
     with open(video_path, "wb") as f:
         shutil.copyfileobj(video.file, f)
         
@@ -230,7 +231,7 @@ async def create_pipeline_job(
         "status": "queued",
         "progress": 5,
         "current_stage": "Initializing job environment",
-        "video_file": video.filename,
+        "video_file": safe_video_name,
         "telemetry_file": telemetry_filename,
         "model": model,
         "compute_backend": compute_backend,
@@ -242,8 +243,12 @@ async def create_pipeline_job(
         "vram_total_gb": 0.0
     }
     
-    if compute_backend not in ["local_gpu", "local_cpu"]:
-        raise HTTPException(status_code=400, detail="Requested compute backend is currently unavailable.")
+    # Gracefully route unavailable remote backends to local_cpu as fallback
+    local_backends = ["local_gpu", "local_cpu"]
+    effective_backend = compute_backend if compute_backend in local_backends else "local_cpu"
+    if effective_backend != compute_backend:
+        JOBS[job_id]["compute_backend"] = effective_backend
+        JOBS[job_id]["current_stage"] = f"Routing to local CPU ('{compute_backend}' unavailable)"
 
     # Run processing asynchronously
     background_tasks.add_task(
