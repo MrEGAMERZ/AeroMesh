@@ -131,21 +131,33 @@ export default function Viewer3D({ flightData, measurementMode, measuredPoints =
       loader.load(flightData.ply_url, (geometry) => {
         geometry.computeVertexNormals();
         
-        // If geometry has color, PLYLoader sets it automatically
-        let material = new THREE.PointsMaterial({ size: 1.5 });
-        if (geometry.attributes.color) {
-            material.vertexColors = true;
+        // Render as a solid 3D model if faces are present (e.g. from our meshing pipeline)
+        let object3d;
+        if (geometry.index) {
+            // It has faces! Render as a solid mesh.
+            const material = new THREE.MeshStandardMaterial({
+                vertexColors: !!geometry.attributes.color,
+                color: geometry.attributes.color ? 0xffffff : 0xaaaaaa,
+                roughness: 0.8,
+                metalness: 0.1,
+                side: THREE.DoubleSide
+            });
+            object3d = new THREE.Mesh(geometry, material);
+            objRef.current.mesh = object3d;
         } else {
-            material.color = new THREE.Color(0xaaaaaa);
+            // No faces, render as point cloud
+            const material = new THREE.PointsMaterial({ 
+                size: 1.5,
+                vertexColors: !!geometry.attributes.color,
+                color: geometry.attributes.color ? 0xffffff : 0xaaaaaa
+            });
+            object3d = new THREE.Points(geometry, material);
+            objRef.current.pcd = object3d;
         }
         
-        const pc = new THREE.Points(geometry, material);
-        
         // Rotate so Y is up (often point clouds come with Z up)
-        pc.rotation.x = -Math.PI / 2;
-        
-        sc.add(pc);
-        objRef.current.pcd = pc;
+        object3d.rotation.x = -Math.PI / 2;
+        sc.add(object3d);
 
         // Auto-center camera on the point cloud
         geometry.computeBoundingSphere();

@@ -144,17 +144,18 @@ def run_pipeline(
             )
             print(f"Calculated Rigid Transform: Scale Factor={scale:.4f}, GPS Trajectory Synchronized.")
 
-        # Save point cloud
-        ply_path = os.path.join(output_dir, "reconstructed_pointcloud.ply")
-        save_point_cloud_ply(recon_result, ply_path)
         save_cameras_json(recon_result, os.path.join(output_dir, "camera_trajectory.json"))
-
+        
         # 5. Poisson Surface Reconstruction & Mesh Texturing
         print("\n--- [Step 5/5] Poisson Surface Reconstruction & Texturing ---")
         mesh_gen = MeshGenerator(MeshingConfig(depth=8))
         mesh_output = mesh_gen.generate_mesh(recon_result.point_cloud)
         obj_path = os.path.join(output_dir, "reconstructed_mesh.obj")
         mesh_gen.export_obj(mesh_output, obj_path)
+        
+        # Export the solid mesh to PLY so the frontend WebGL Viewer renders a solid building instead of sparse points!
+        ply_path = os.path.join(output_dir, "reconstructed_pointcloud.ply")
+        mesh_gen.export_ply(mesh_output, ply_path)
 
         # Save pipeline summary
         elapsed = time.time() - start_time

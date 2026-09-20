@@ -204,3 +204,42 @@ class MeshGenerator:
         # We can write an ASCII glTF (.gltf) or OBJ. To ensure 100% interoperability
         # with Three.js OBJLoader or custom parser, we provide clean OBJ and GLTF representation.
         self.export_obj(mesh, output_path.replace(".gltf", ".obj").replace(".glb", ".obj"))
+
+    def export_ply(self, mesh: MeshOutput, output_path: str):
+        """Export solid mesh with faces and colors to PLY format (loads easily in Three.js)."""
+        os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
+        has_colors = mesh.vertex_colors is not None and len(mesh.vertex_colors) == len(mesh.vertices)
+        
+        with open(output_path, "w", encoding="ascii") as f:
+            f.write("ply\n")
+            f.write("format ascii 1.0\n")
+            f.write(f"element vertex {len(mesh.vertices)}\n")
+            f.write("property float x\n")
+            f.write("property float y\n")
+            f.write("property float z\n")
+            if has_colors:
+                f.write("property uchar red\n")
+                f.write("property uchar green\n")
+                f.write("property uchar blue\n")
+            f.write(f"element face {len(mesh.triangles)}\n")
+            f.write("property list uchar int vertex_index\n")
+            f.write("end_header\n")
+            
+            # Write vertices
+            for i, v in enumerate(mesh.vertices):
+                if has_colors:
+                    c = mesh.vertex_colors[i]
+                    # Colors might be 0-1 or 0-255
+                    r = int(c[0] * 255) if c.max() <= 1.0 else int(c[0])
+                    g = int(c[1] * 255) if c.max() <= 1.0 else int(c[1])
+                    b = int(c[2] * 255) if c.max() <= 1.0 else int(c[2])
+                    f.write(f"{v[0]:.6f} {v[1]:.6f} {v[2]:.6f} {r} {g} {b}\n")
+                else:
+                    f.write(f"{v[0]:.6f} {v[1]:.6f} {v[2]:.6f}\n")
+            
+            # Write faces
+            for tri in mesh.triangles:
+                f.write(f"3 {tri[0]} {tri[1]} {tri[2]}\n")
+
+        print(f"[Meshing] Exported solid PLY: {output_path}")
+
