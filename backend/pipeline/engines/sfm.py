@@ -197,18 +197,15 @@ class SfMEngine(BaseReconstructionEngine):
             all_colors.append(colors)
             num_pairs_ok += 1
 
-        if not all_pts3d:
-            print("[SfM] Not enough motion between frames — using single-frame depth fallback.")
-            pts3d, colors = self._single_frame_fallback(imgs_all[len(imgs_all)//2], K)
-            all_pts3d.append(pts3d)
-            all_colors.append(colors)
+        print(f"[SfM] Sparse reconstruction complete. Found {num_pairs_ok} pairs.")
+        
+        print("[SfM] Upgrading to DENSE Point Cloud using MiDaS...")
+        points, colors = self._dense_reconstruction(frames, camera_poses, K)
+        
+        if len(points) == 0:
+            print("[SfM] Dense reconstruction failed. Using single-frame fallback.")
+            points, colors = self._single_frame_fallback(frames[len(frames)//2][0], K)
 
-        points = np.vstack(all_pts3d).astype(np.float32)
-        colors = np.vstack(all_colors).astype(np.uint8)
-        print(f"[SfM] Raw points: {len(points):,} from {num_pairs_ok} pairs")
-
-        if len(points) > 200:
-            points, colors = self._remove_outliers(points, colors)
         print(f"[SfM] Final: {len(points):,} colored 3D points from REAL video geometry")
 
         pc = PointCloud(points=points, colors=colors,
@@ -222,6 +219,84 @@ class SfMEngine(BaseReconstructionEngine):
         )
         self.cleanup()
         return result
+
+    def _dense_reconstruction(self, frames: list, camera_poses: list, K: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Run dense monocular depth estimation on each frame, and back-project
+        using the solved sparse camera poses to create a massive dense point cloud.
+        """
+        import urllib.request
+        
+        model_path = os.path.join(os.path.dirname(__file__), "model-small.onnx")
+        if not os.path.exists(model_path):
+            print("[SfM] Downloading MiDaS small model for dense reconstruction...")
+            urllib.request.urlretrieve("https://github.com/isl-org/MiDaS/releases/download/v2_1/model-small.onnx", model_path)
+            
+        print("[SfM] Loading dense depth model...")
+        net = cv2.dnn.readNet(model_path)
+        
+        all_pts3d = []
+        all_colors = []
+        
+        print(f"[SfM] Running dense back-projection for {len(frames)} frames...")
+        
+        for pose in camera_poses:
+            frame_idx = pose.frame_index
+            if frame_idx >= len(frames):
+                continue
+            
+            img = frames[frame_idx][0]
+            h, w = img.shape[:2]
+            
+            # Predict depth
+            blob = cv2.dnn.blobFromImage(img, 1/255.0, (256, 256), (123.675, 116.28, 103.53), swapRB=True, crop=False)
+            net.setInput(blob)
+            depth_map = net.forward()[0, 0]
+            depth_map = cv2.resize(depth_map, (w, h))
+            
+            # Convert disparity to depth
+            depth = 1.0 / (depth_map + 1e-6)
+            median_d = np.median(depth)
+            if median_d > 1e-6:
+                depth = depth * (20.0 / median_d) # Scale to ~20m baseline
+                
+            # Back-project to 3D
+            step = 3 # Subsample 1/9th of pixels for speed/memory
+            ys, xs = np.mgrid[0:h:step, 0:w:step]
+            ys, xs = ys.ravel(), xs.ravel()
+            z = depth[ys, xs]
+            
+            X = (xs - K[0, 2]) * z / K[0, 0]
+            Y = (ys - K[1, 2]) * z / K[1, 1]
+            
+            pts_local = np.stack([X, Y, z], axis=1).astype(np.float32)
+            
+            # Transform to global coordinates using the camera pose
+            # R_global and t_global in CameraPose are world-to-cam
+            R_wc = pose.rotation
+            t_wc = pose.translation.reshape(3, 1)
+            
+            pts_global = (R_wc.T @ (pts_local.T - t_wc)).T
+            colors_subset = img[ys, xs, ::-1].astype(np.uint8)
+            
+            all_pts3d.append(pts_global)
+            all_colors.append(colors_subset)
+            
+        if not all_pts3d:
+            return np.array([]), np.array([])
+            
+        points = np.vstack(all_pts3d)
+        colors = np.vstack(all_colors)
+        
+        # Simple outlier removal
+        if len(points) > 1000:
+            centroid = np.median(points, axis=0)
+            dists = np.linalg.norm(points - centroid, axis=1)
+            mask = dists < np.median(dists) + 3.0 * np.std(dists)
+            points = points[mask]
+            colors = colors[mask]
+            
+        return points.astype(np.float32), colors
 
     def _sample_colors(self, img_bgr: np.ndarray, pts2d: np.ndarray) -> np.ndarray:
         h, w = img_bgr.shape[:2]

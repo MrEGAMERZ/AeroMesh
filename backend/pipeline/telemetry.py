@@ -253,7 +253,7 @@ class TelemetryParser:
         roll_pattern  = _field(r'roll')
 
         # Timestamp pattern: HH:MM:SS,mmm --> HH:MM:SS,mmm
-        time_pattern = re.compile(r'(\d{2}):(\d{2}):(\d{2}),(\d{3})\s*-->')
+        time_pattern = re.compile(r'(\d{2}):(\d{2}):(\d{2}),(\d{3})\s*-->\s*(\d{2}):(\d{2}):(\d{2}),(\d{3})')
 
         points = []
         blocks = content.split("\n\n")
@@ -278,8 +278,11 @@ class TelemetryParser:
             ts = 0.0
             time_match = time_pattern.search(block)
             if time_match:
-                h, m, s, ms = (int(time_match.group(i)) for i in range(1, 5))
-                ts = (h * 3600 + m * 60 + s) * 1000.0 + ms
+                h1, m1, s1, ms1 = (int(time_match.group(i)) for i in range(1, 5))
+                h2, m2, s2, ms2 = (int(time_match.group(i)) for i in range(5, 9))
+                ts1 = (h1 * 3600 + m1 * 60 + s1) * 1000.0 + ms1
+                ts2 = (h2 * 3600 + m2 * 60 + s2) * 1000.0 + ms2
+                ts = (ts1 + ts2) / 2.0  # Use midpoint of the subtitle window
 
             points.append(TelemetryPoint(
                 timestamp_ms=ts, latitude=lat, longitude=lon, altitude_m=alt,
@@ -384,8 +387,8 @@ class TrajectoryAligner:
         """
         Align reconstructed camera positions to GPS trajectory.
         
-        Interpolates GPS trajectory to match frame timestamps,
-        then computes the rigid transformation.
+        Interpolates GPS trajectory to match frame timestamps using Cubic Spline 
+        for smooth sub-second alignment, mimicking ch1bo's logic.
         
         Args:
             camera_positions: Nx3 array of estimated camera positions
@@ -395,15 +398,34 @@ class TrajectoryAligner:
         Returns:
             (rotation, translation, scale) transformation parameters
         """
+        from scipy.interpolate import CubicSpline
+
         # Convert GPS to local ENU
         enu_points = self.gps_to_local_enu(trajectory.points)
         gps_timestamps = np.array([p.timestamp_ms for p in trajectory.points])
+        
+        # Ensure timestamps are strictly increasing for CubicSpline
+        _, unique_idx = np.unique(gps_timestamps, return_index=True)
+        gps_timestamps = gps_timestamps[unique_idx]
+        enu_points = enu_points[unique_idx]
 
-        # Interpolate GPS positions at frame timestamps
         frame_ts = np.array(frame_timestamps)
-        interp_east = np.interp(frame_ts, gps_timestamps, enu_points[:, 0])
-        interp_north = np.interp(frame_ts, gps_timestamps, enu_points[:, 1])
-        interp_up = np.interp(frame_ts, gps_timestamps, enu_points[:, 2])
+        
+        if len(gps_timestamps) > 3:
+            # Smooth 1Hz-to-sub-second interpolation
+            cs_east = CubicSpline(gps_timestamps, enu_points[:, 0], extrapolate=True)
+            cs_north = CubicSpline(gps_timestamps, enu_points[:, 1], extrapolate=True)
+            cs_up = CubicSpline(gps_timestamps, enu_points[:, 2], extrapolate=True)
+            
+            interp_east = cs_east(frame_ts)
+            interp_north = cs_north(frame_ts)
+            interp_up = cs_up(frame_ts)
+        else:
+            # Fallback to linear if too few points
+            interp_east = np.interp(frame_ts, gps_timestamps, enu_points[:, 0])
+            interp_north = np.interp(frame_ts, gps_timestamps, enu_points[:, 1])
+            interp_up = np.interp(frame_ts, gps_timestamps, enu_points[:, 2])
+            
         gps_at_frames = np.stack([interp_east, interp_north, interp_up], axis=1)
 
         # Compute rigid alignment

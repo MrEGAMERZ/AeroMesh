@@ -41,3 +41,13 @@ Thumbs.db
 .idea/
 backend/data/
 *.py.bak
+
+# Archive and AI Scripts
+archive_to_delete/
+agent_scripts/
+
+# Machine Learning Models (Too large for GitHub)
+backend/models/
+*.onnx
+*.pt
+*.pth
