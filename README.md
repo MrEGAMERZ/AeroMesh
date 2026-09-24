@@ -13,6 +13,8 @@ A state-of-the-art platform for converting **single-pass drone video** and fligh
 
 ## 📚 Documentation Index
 
+- 📊 **[AeroMesh Detail Report](docs/PROJECT_REPORT.md)**: Comprehensive problem statement analysis, NTRO requirements mapping, and core product definitions.
+
 - 📘 **[End-User & Operator Manual](docs/USER_GUIDE.md)**: Step-by-step guide to flight inspection, Blender hotkeys, 3D model importing, PBR lighting, physics simulations, and metric measurements.
 - 🔬 **[System Architecture & Mathematical Specifications](docs/ARCHITECTURE.md)**: Deep dive into feed-forward 3D transformers, SVD rigid georeferencing, SAM 2 dynamic masking, and Poisson surface meshing.
 

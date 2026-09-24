@@ -51,3 +51,4 @@ backend/models/
 *.onnx
 *.pt
 *.pth
+docs/internal/
