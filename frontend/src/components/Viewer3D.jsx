@@ -305,8 +305,30 @@ export default function Viewer3D({ flightData, measurementMode, measuredPoints =
 
   /* ═══════════════ SYNC ACTIVE POSE ═══════════════ */
   useEffect(() => {
-    if (!activePose || !cameraRef.current || !controlsRef.current) return;
-    // Just sync visualization here in the future
+    if (!activePose || !sceneRef.current) return;
+    const sc = sceneRef.current;
+    
+    // Create the active drone tracker if it doesn't exist
+    if (!objRef.current.activeDrone) {
+      const f = new THREE.CameraHelper(new THREE.PerspectiveCamera(45, 1.5, 0.5, 20));
+      // Give it a distinct color (yellow/orange) to stand out from static poses
+      f.material.color.setHex(0xffaa00);
+      f.scale.set(1.2, 1.2, 1.2); 
+      sc.add(f);
+      objRef.current.activeDrone = f;
+    }
+
+    const drone = objRef.current.activeDrone;
+    drone.position.set(activePose.translation[0], activePose.translation[1], activePose.translation[2]);
+    const m4 = new THREE.Matrix4();
+    m4.set(
+        activePose.rotation[0][0], activePose.rotation[0][1], activePose.rotation[0][2], 0,
+        activePose.rotation[1][0], activePose.rotation[1][1], activePose.rotation[1][2], 0,
+        activePose.rotation[2][0], activePose.rotation[2][1], activePose.rotation[2][2], 0,
+        0, 0, 0, 1
+    );
+    drone.setRotationFromMatrix(m4);
+    drone.update();
   }, [activePose]);
 
   return (

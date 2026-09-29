@@ -145,7 +145,7 @@ class VGGSfMEngine(BaseReconstructionEngine):
             "max_1st_frame_num": 192,
             "max_frame_num": min(num_frames, 64),  # cap for VRAM safety on RTX 5060
             "mixed_precision": "bf16",
-            "dense_depth": False,
+            "dense_depth": True,
             "viz_visualize": False,
             "gr_visualize": False,
             "make_reproj_video": False,
@@ -221,7 +221,8 @@ def _parse_vggsfm_predictions(predictions: dict, frame_paths: list) -> Reconstru
     """
     extrinsics = predictions.get("extrinsics")
     intrinsics  = predictions.get("intrinsics")
-    points3d    = predictions.get("points3D")
+    points3d    = predictions.get("points3D_dense") if predictions.get("points3D_dense") is not None else predictions.get("points3D")
+    colors3d    = predictions.get("colors3D_dense")
     track_vis   = predictions.get("track_vis")
 
     # Strip batch dimension if present
@@ -234,6 +235,7 @@ def _parse_vggsfm_predictions(predictions: dict, frame_paths: list) -> Reconstru
     ext_np = _to_np(extrinsics)
     int_np = _to_np(intrinsics)
     pts_np = _to_np(points3d)
+    col_np = _to_np(colors3d)
     vis_np = _to_np(track_vis)
 
     if ext_np is not None and ext_np.ndim == 4:
@@ -263,7 +265,10 @@ def _parse_vggsfm_predictions(predictions: dict, frame_paths: list) -> Reconstru
         else:
             confidence = np.ones(len(pts_np), dtype=np.float32)
 
-        colors = np.full((len(pts_np), 3), 180, dtype=np.uint8)  # neutral grey placeholder
+        if col_np is not None and len(col_np) == len(pts_np):
+            colors = col_np.astype(np.uint8)
+        else:
+            colors = np.full((len(pts_np), 3), 180, dtype=np.uint8)  # neutral grey placeholder
         point_cloud = PointCloud(
             points=pts_np.astype(np.float32),
             colors=colors,
